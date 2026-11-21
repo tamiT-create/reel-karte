@@ -60,9 +60,26 @@
   .pill .dot{width:9px;height:9px;border-radius:50%}
   .pill.off{opacity:.45}
   .pill .n{color:var(--muted);font-size:12px}
+  .grp-tools{display:flex;justify-content:flex-end;margin-bottom:-4px}
+  .grp-head{display:flex;align-items:center;gap:8px;width:100%;border:0;background:none;padding:10px 4px;margin:2px 0 4px;cursor:pointer;
+    font-size:13px;color:var(--fg);text-transform:uppercase;letter-spacing:.04em;font-weight:700;border-bottom:1px solid var(--border);text-align:left}
+  .grp-head .grp-name{flex:1}
+  .grp-head .grp-n{font-weight:500;color:var(--muted);background:var(--accent);border-radius:999px;padding:1px 8px;font-size:12px;letter-spacing:0}
+  .grp-head .chev{display:inline-block;transition:transform .15s;color:var(--muted)}
+  .group.closed .chev{transform:rotate(-90deg)}
   .group h3{margin:8px 0 6px;font-size:13px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;font-weight:600}
   .card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:12px;margin-bottom:8px;cursor:pointer}
   .card.sel{border-color:var(--fg)}
+  .card.visited{opacity:.55}
+  .card.fav{border-color:#f2c94c;box-shadow:inset 3px 0 0 #f2c94c}
+  .card .done{font-size:11px;font-weight:500;color:#2b8a3e;background:#ebfbee;border-radius:999px;padding:1px 7px;margin-left:4px}
+  .card .flags{margin-left:auto;display:flex;gap:6px}
+  .iconbtn{min-width:36px;font-size:15px}
+  .on-fav{background:#fff7d6;border-color:#f2c94c;color:#b7791f}
+  .on-visited{background:#ebfbee;border-color:#8ce99a;color:#2b8a3e}
+  .pill-sep{flex-basis:100%;height:0}
+  .pill.flag.on{background:var(--fg);color:#fff;border-color:var(--fg)}
+  .pill.flag.on .n{color:#ddd}
   .card .top{display:flex;justify-content:space-between;gap:8px;align-items:flex-start}
   .card .name{font-weight:600}
   .card .meta{font-size:12px;color:var(--muted);margin-top:2px}
@@ -92,8 +109,14 @@
   .toast{position:fixed;left:50%;bottom:calc(24px + env(safe-area-inset-bottom));transform:translateX(-50%);background:var(--fg);color:#fff;
     padding:10px 16px;border-radius:12px;font-size:14px;z-index:2000;opacity:0;transition:opacity .2s;pointer-events:none;max-width:90vw}
   .toast.show{opacity:1}
-  .pin-icon{width:34px;height:34px;border-radius:50%;border:2px solid #fff;box-shadow:0 1px 6px rgba(0,0,0,.35);
+  .pin-icon{position:relative;width:34px;height:34px;border-radius:50%;border:2px solid #fff;box-shadow:0 1px 6px rgba(0,0,0,.35);
     display:flex;align-items:center;justify-content:center;font-size:17px;line-height:1}
+  .pin-icon.visited{filter:grayscale(1);opacity:.55}
+  .pin-icon.fav{border-color:#f2c94c;border-width:3px}
+  .badge-fav,.badge-done{position:absolute;top:-7px;right:-7px;width:17px;height:17px;border-radius:50%;font-size:11px;
+    display:flex;align-items:center;justify-content:center;border:1.5px solid #fff;font-weight:700}
+  .badge-fav{background:#f2c94c;color:#fff}
+  .badge-done{background:#2b8a3e;color:#fff;top:auto;bottom:-7px}
   .me-dot{width:16px;height:16px;border-radius:50%;background:#1c7ed6;border:3px solid #fff;box-shadow:0 0 0 2px rgba(28,126,214,.35)}
   .leaflet-popup-content{margin:10px 12px;font-size:14px}
   .leaflet-popup-content .pactions{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
@@ -286,6 +309,8 @@ function normalisePin(o) {
     lng: Number.isFinite(lng) ? lng : null,
     website: String(o.website || ""),
     hours: String(o.hours || ""),
+    fav: !!o.fav,
+    visited: !!o.visited,
     osmType: o.osmType || "", osmId: o.osmId || "",
     createdAt: Number(o.createdAt) || Date.now(),
     updatedAt: Number(o.updatedAt) || Number(o.createdAt) || Date.now(),
@@ -448,12 +473,14 @@ function initMap() {
   markerLayer = L.layerGroup().addTo(map);
 }
 function popupHtml(p) {
-  return `<strong>${esc(p.name)}</strong><br><span style="color:#74706a;font-size:12px">${esc(catLabel(p.category))}${p.city ? " · " + esc(p.city) : ""}</span>
+  return `<strong>${p.fav ? "⭐ " : ""}${esc(p.name)}</strong><br><span style="color:#74706a;font-size:12px">${esc(catLabel(p.category))}${p.city ? " · " + esc(p.city) : ""}</span>
     ${p.note ? `<div style="margin-top:4px;font-size:13px">${esc(p.note)}</div>` : ""}
     <div class="pactions">
       ${p.url ? `<a class="btn sm" href="${esc(p.url)}" target="_blank" rel="noopener">▶︎ Reel</a>` : ""}
       <a class="btn sm" href="${esc(p.website || googleSearch(p))}" target="_blank" rel="noopener">${p.website ? "🌐 Webseite" : "🔎 Google"}</a>
       <a class="btn sm" href="${esc(routeUrl(p))}" target="_blank" rel="noopener">🧭 Route</a>
+      <button class="btn sm ${p.fav ? "on-fav" : ""}" onclick="toggleFlag('${esc(p.id)}','fav')">${p.fav ? "★" : "☆"}</button>
+      <button class="btn sm ${p.visited ? "on-visited" : ""}" onclick="toggleFlag('${esc(p.id)}','visited')">✓${p.visited ? " besucht" : ""}</button>
       <button class="btn sm" onclick="openDetail('${esc(p.id)}')">✎</button>
     </div>`;
 }
@@ -463,9 +490,9 @@ function renderMarkers(list) {
     if (p.lat == null) continue;
     const icon = L.divIcon({
       className: "", iconSize: [34, 34], iconAnchor: [17, 17], popupAnchor: [0, -16],
-      html: `<div class="pin-icon" style="background:${catColor(p.category)}">${catIcon(p.category)}</div>`,
+      html: `<div class="pin-icon ${p.visited ? "visited" : ""} ${p.fav ? "fav" : ""}" style="background:${catColor(p.category)}">${catIcon(p.category)}${p.fav ? '<span class="badge-fav">★</span>' : ""}${p.visited ? '<span class="badge-done">✓</span>' : ""}</div>`,
     });
-    const m = L.marker([p.lat, p.lng], { icon, title: p.name }).bindPopup(() => popupHtml(p));
+    const m = L.marker([p.lat, p.lng], { icon, title: p.name, zIndexOffset: p.fav ? 500 : p.visited ? -500 : 0 }).bindPopup(() => popupHtml(p));
     m.addTo(markerLayer); markers.set(p.id, m);
   }
 }
@@ -490,22 +517,33 @@ function locate() {
 }
 
 /* ---------- Liste ---------- */
+let collapsedCities = new Set();
+try { collapsedCities = new Set(JSON.parse(localStorage.getItem("reel-karte:collapsed:v1") || "[]")); } catch {}
+function saveCollapsed() { try { localStorage.setItem("reel-karte:collapsed:v1", JSON.stringify([...collapsedCities])); } catch {} }
 let activeCats = new Set(CAT_KEYS), searchTerm = "", sortByDistance = false, selectedId = null;
+let onlyFav = false, hideVisited = false;
+try { const f = JSON.parse(localStorage.getItem("reel-karte:flags-filter:v1") || "{}"); onlyFav = !!f.onlyFav; hideVisited = !!f.hideVisited; } catch {}
+function saveFlagFilter() { try { localStorage.setItem("reel-karte:flags-filter:v1", JSON.stringify({ onlyFav, hideVisited })); } catch {} }
 function visiblePins() {
   const q = searchTerm.toLowerCase();
   return pins.filter(p => activeCats.has(p.category) &&
+    (!onlyFav || p.fav) && (!hideVisited || !p.visited) &&
     (!q || [p.name, p.city, p.address, p.note, p.caption].join(" ").toLowerCase().includes(q)));
 }
+const favFirst = (a, b) => (b.fav - a.fav) || (a.visited - b.visited);
 function renderPills() {
   const counts = Object.fromEntries(CAT_KEYS.map(k => [k, 0]));
   pins.forEach(p => counts[p.category]++);
   $("#pills").innerHTML = CATEGORIES.map(c =>
-    `<button class="pill ${activeCats.has(c.key) ? "" : "off"}" data-cat="${c.key}"><span>${c.icon}</span>${c.label}<span class="n">${counts[c.key]}</span></button>`).join("");
+    `<button class="pill ${activeCats.has(c.key) ? "" : "off"}" data-cat="${c.key}"><span>${c.icon}</span>${c.label}<span class="n">${counts[c.key]}</span></button>`).join("")
+    + `<span class="pill-sep"></span>
+    <button class="pill flag ${onlyFav ? "on" : ""}" data-flag="fav">⭐ Nur Favoriten<span class="n">${pins.filter(p => p.fav).length}</span></button>
+    <button class="pill flag ${hideVisited ? "on" : ""}" data-flag="visited">✓ Besuchte ausblenden<span class="n">${pins.filter(p => p.visited).length}</span></button>`;
 }
 function cardHtml(p) {
   const d = myPos && p.lat != null ? fmtKm(distKm(myPos, p)) : "";
-  return `<div class="card ${p.id === selectedId ? "sel" : ""}" data-id="${esc(p.id)}">
-    <div class="top"><div><div class="name">${esc(p.name)}</div>
+  return `<div class="card ${p.id === selectedId ? "sel" : ""} ${p.visited ? "visited" : ""} ${p.fav ? "fav" : ""}" data-id="${esc(p.id)}">
+    <div class="top"><div><div class="name">${p.fav ? "⭐ " : ""}${esc(p.name)}${p.visited ? ' <span class="done">✓ besucht</span>' : ""}</div>
       <div class="meta">${[d, p.address || p.city, p.lat == null ? "⚠︎ ohne Koordinaten" : ""].filter(Boolean).map(esc).join(" · ")}</div></div>
       <span class="tag" style="background:${catColor(p.category)}">${catIcon(p.category)} ${esc(catLabel(p.category))}</span></div>
     ${p.note ? `<div class="meta" style="color:var(--fg)">${esc(p.note)}</div>` : ""}
@@ -513,6 +551,10 @@ function cardHtml(p) {
       ${p.url ? `<a class="btn sm" href="${esc(p.url)}" target="_blank" rel="noopener">▶︎ Reel</a>` : ""}
       <a class="btn sm" href="${esc(p.website || googleSearch(p))}" target="_blank" rel="noopener">${p.website ? "🌐 Webseite" : "🔎 Google"}</a>
       <a class="btn sm" href="${esc(routeUrl(p))}" target="_blank" rel="noopener">🧭 Route</a>
+      <span class="flags">
+        <button class="btn sm iconbtn ${p.fav ? "on-fav" : ""}" data-act="fav" title="Favorit" aria-pressed="${p.fav}">${p.fav ? "★" : "☆"}</button>
+        <button class="btn sm iconbtn ${p.visited ? "on-visited" : ""}" data-act="visited" title="Besucht" aria-pressed="${p.visited}">✓</button>
+      </span>
     </div></div>`;
 }
 function render() {
@@ -531,8 +573,20 @@ function render() {
   }
   const groups = {};
   for (const p of vis) (groups[p.city || "Ohne Stadt"] ||= []).push(p);
-  $("#list").innerHTML = Object.keys(groups).sort((a, b) => a === "Ohne Stadt" ? 1 : b === "Ohne Stadt" ? -1 : a.localeCompare(b))
-    .map(g => `<div class="group"><h3>${esc(g)} · ${groups[g].length}</h3>${groups[g].sort((a, b) => b.createdAt - a.createdAt).map(cardHtml).join("")}</div>`).join("");
+  const names = Object.keys(groups).sort((a, b) => a === "Ohne Stadt" ? 1 : b === "Ohne Stadt" ? -1 : a.localeCompare(b));
+  const searching = !!searchTerm.trim();
+  const allClosed = names.every(g => collapsedCities.has(g));
+  $("#list").innerHTML = (names.length > 1 && !searching
+      ? `<div class="grp-tools"><button class="btn sm ghost" id="toggleAllCities">${allClosed ? "Alle aufklappen" : "Alle zuklappen"}</button></div>` : "")
+    + names.map(g => {
+      const open = searching || !collapsedCities.has(g);
+      return `<div class="group ${open ? "" : "closed"}">
+        <button class="grp-head" data-city="${esc(g)}" aria-expanded="${open}">
+          <span class="chev">▾</span><span class="grp-name">${esc(g)}</span><span class="grp-n">${groups[g].length}</span>
+        </button>
+        ${open ? groups[g].sort((a, b) => favFirst(a, b) || b.createdAt - a.createdAt).map(cardHtml).join("") : ""}
+      </div>`;
+    }).join("");
 }
 
 /* ---------- Hinzufügen ---------- */
@@ -633,6 +687,10 @@ function openDetail(id) {
       <a class="btn sm" href="${esc(routeUrl(p))}" target="_blank" rel="noopener">🧭 Route</a>
       ${p.lat != null ? `<button class="btn sm" id="dShow">Auf Karte</button>` : ""}
     </div>
+    <div class="row" style="margin-bottom:4px">
+      <label class="pill" style="cursor:pointer"><input type="checkbox" id="dFav" ${p.fav ? "checked" : ""}> ⭐ Favorit</label>
+      <label class="pill" style="cursor:pointer"><input type="checkbox" id="dVisited" ${p.visited ? "checked" : ""}> ✓ Besucht</label>
+    </div>
     <label class="lbl">Name</label><input type="text" id="dName" value="${esc(p.name)}">
     <label class="lbl">Adresse</label>
     <div class="row"><input type="text" id="dAddr" value="${esc(p.address)}" placeholder="Strasse, Ort"><button class="btn sm" id="dGeo" title="Pin an diese Adresse verschieben">📍 Pin setzen</button></div>
@@ -656,6 +714,7 @@ function openDetail(id) {
     p.note = $("#dNote").value.trim();
     p.address = $("#dAddr").value.trim();
     p.city = $("#dCity").value.trim();
+    p.fav = $("#dFav").checked; p.visited = $("#dVisited").checked;
     if (pendingGeo) { Object.assign(p, pendingGeo); }
     touch(p); save(); closeOverlays(); render(); toast("Gespeichert.");
     if (pendingGeo) enrich(p);
@@ -681,6 +740,15 @@ function openDetail(id) {
   if (show) show.onclick = () => { closeOverlays(); setView("map"); map.setView([p.lat, p.lng], 16); markers.get(p.id)?.openPopup(); };
 }
 window.openDetail = openDetail;
+function toggleFlag(id, flag) {
+  const p = pins.find(x => x.id === id); if (!p) return;
+  p[flag] = !p[flag]; touch(p); save();
+  const wasOpen = markers.get(id)?.isPopupOpen();
+  render();
+  if (wasOpen) markers.get(id)?.openPopup();
+  toast(flag === "fav" ? (p.fav ? "⭐ Als Favorit markiert" : "Favorit entfernt") : (p.visited ? "✓ Als besucht abgehakt" : "Wieder als offen markiert"));
+}
+window.toggleFlag = toggleFlag;
 
 /* ---------- Backup ---------- */
 function exportBackup() {
@@ -725,12 +793,24 @@ function bind() {
   $("#quickUrl").addEventListener("keydown", e => { if (e.key === "Enter") $("#addBtn").click(); });
   $("#search").addEventListener("input", e => { searchTerm = e.target.value; render(); });
   $("#pills").addEventListener("click", e => {
+    const f = e.target.closest("[data-flag]");
+    if (f) { if (f.dataset.flag === "fav") onlyFav = !onlyFav; else hideVisited = !hideVisited; saveFlagFilter(); render(); return; }
     const b = e.target.closest("[data-cat]"); if (!b) return;
     const k = b.dataset.cat; activeCats.has(k) ? activeCats.delete(k) : activeCats.add(k); render();
   });
   $("#list").addEventListener("click", e => {
     if (e.target.closest("a")) return;
+    const act = e.target.closest("[data-act]");
+    if (act) { toggleFlag(act.closest(".card").dataset.id, act.dataset.act); return; }
     if (e.target.id === "unsort") { sortByDistance = false; render(); return; }
+    if (e.target.id === "toggleAllCities") {
+      const names = [...document.querySelectorAll(".grp-head")].map(b => b.dataset.city);
+      const allClosed = names.every(g => collapsedCities.has(g));
+      names.forEach(g => allClosed ? collapsedCities.delete(g) : collapsedCities.add(g));
+      saveCollapsed(); render(); return;
+    }
+    const gh = e.target.closest(".grp-head");
+    if (gh) { const g = gh.dataset.city; collapsedCities.has(g) ? collapsedCities.delete(g) : collapsedCities.add(g); saveCollapsed(); render(); return; }
     const c = e.target.closest(".card"); if (c) openDetail(c.dataset.id);
   });
   $("#nearBtnList").onclick = () => { locate(); };
