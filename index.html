@@ -92,6 +92,8 @@
   .toast{position:fixed;left:50%;bottom:calc(24px + env(safe-area-inset-bottom));transform:translateX(-50%);background:var(--fg);color:#fff;
     padding:10px 16px;border-radius:12px;font-size:14px;z-index:2000;opacity:0;transition:opacity .2s;pointer-events:none;max-width:90vw}
   .toast.show{opacity:1}
+  .pin-icon{width:34px;height:34px;border-radius:50%;border:2px solid #fff;box-shadow:0 1px 6px rgba(0,0,0,.35);
+    display:flex;align-items:center;justify-content:center;font-size:17px;line-height:1}
   .me-dot{width:16px;height:16px;border-radius:50%;background:#1c7ed6;border:3px solid #fff;box-shadow:0 0 0 2px rgba(28,126,214,.35)}
   .leaflet-popup-content{margin:10px 12px;font-size:14px}
   .leaflet-popup-content .pactions{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
@@ -191,13 +193,14 @@
 "use strict";
 /* ---------- Konstanten ---------- */
 const CATEGORIES = [
-  { key: "kaffee", label: "Kaffee" },
-  { key: "abendessen", label: "Abendessen" },
-  { key: "bar", label: "Bar" },
-  { key: "aktivitaeten", label: "Aktivitäten" },
-  { key: "sehenswuerdigkeiten", label: "Sehenswürdigkeiten" },
+  { key: "kaffee", label: "Kaffee", icon: "☕" },
+  { key: "abendessen", label: "Abendessen", icon: "🍽️" },
+  { key: "bar", label: "Bar", icon: "🍸" },
+  { key: "aktivitaeten", label: "Aktivitäten", icon: "🏄" },
+  { key: "sehenswuerdigkeiten", label: "Sehenswürdigkeiten", icon: "🏛️" },
 ];
 const CAT_KEYS = CATEGORIES.map(c => c.key);
+const catIcon = k => (CATEGORIES.find(c => c.key === k) || CATEGORIES[4]).icon;
 const catLabel = k => (CATEGORIES.find(c => c.key === k) || CATEGORIES[4]).label;
 const catColor = k => getComputedStyle(document.documentElement).getPropertyValue("--" + k).trim() || "#555";
 const STORE_KEY = "reel-karte:pins:v2";
@@ -292,7 +295,7 @@ async function photon(q, limit = 5) {
       country: pr.country || "",
       lat, lng,
       osmType: pr.osm_type || "", osmId: pr.osm_id || "",
-      category: guessCategory(pr.osm_key, pr.osm_value),
+      osmCategory: categoryFromOsm(pr.osm_key, pr.osm_value),
     };
   });
 }
@@ -310,7 +313,7 @@ async function nominatim(q) {
       country: a.country || "",
       lat: Number(x.lat), lng: Number(x.lon),
       osmType: (x.osm_type || "")[0]?.toUpperCase() || "", osmId: x.osm_id || "",
-      category: guessCategory(x.category, x.type),
+      osmCategory: categoryFromOsm(x.category, x.type),
       website: x.extratags?.website || x.extratags?.["contact:website"] || "",
       hours: x.extratags?.opening_hours || "",
     };
@@ -320,14 +323,43 @@ async function geocode(q, limit = 5) {
   try { const r = await photon(q, limit); if (r.length) return r; } catch (e) { /* Fallback unten */ }
   try { await sleep(1100); return await nominatim(q); } catch { return []; }
 }
-function guessCategory(key, val) {
+/* Kategorie aus OSM-Tags – liefert null, wenn das Tag nichts Eindeutiges sagt */
+function categoryFromOsm(key, val) {
   val = String(val || ""); key = String(key || "");
-  if (/^(cafe|coffee|bakery|ice_cream|tea)$/.test(val)) return "kaffee";
-  if (/^(restaurant|fast_food|food_court|bistro)$/.test(val)) return "abendessen";
-  if (/^(bar|pub|nightclub|biergarten|wine_bar)$/.test(val)) return "bar";
-  if (/^(attraction|viewpoint|museum|gallery|artwork|monument|memorial|castle|ruins|place_of_worship|lighthouse)$/.test(val) || key === "historic") return "sehenswuerdigkeiten";
-  if (/^(park|beach|zoo|theme_park|aquarium|sports_centre|swimming_pool|marina|trailhead|nature_reserve|cinema|theatre|market|marketplace)$/.test(val) || key === "leisure" || key === "natural" || key === "shop") return "aktivitaeten";
-  return "sehenswuerdigkeiten";
+  if (/^(cafe|coffee|coffee_shop|bakery|pastry|ice_cream|tea|juice_bar|confectionery|deli)$/.test(val)) return "kaffee";
+  if (/^(restaurant|fast_food|food_court|bistro|bbq)$/.test(val)) return "abendessen";
+  if (/^(bar|pub|nightclub|biergarten|wine_bar|brewery|winery|distillery)$/.test(val)) return "bar";
+  if (/^(attraction|viewpoint|museum|gallery|arts_centre|artwork|monument|memorial|castle|ruins|place_of_worship|lighthouse|church|cathedral|temple|tower|fort|archaeological_site|landmark)$/.test(val) || key === "historic") return "sehenswuerdigkeiten";
+  if (/^(park|garden|beach|zoo|theme_park|aquarium|sports_centre|swimming_pool|marina|nature_reserve|cinema|theatre|market|marketplace|water_park|golf_course|climbing|dive_centre|surf_school|playground|peak|cape|bay|cliff|waterfall|spring|cave_entrance|island)$/.test(val) || key === "leisure" || key === "natural" || key === "shop") return "aktivitaeten";
+  return null;
+}
+/* Kategorie aus Wörtern (Name, Caption-Zeile, ganze Caption) */
+const CAT_WORDS = [
+  ["bar", /\b(bar|bars|pub|cocktails?|wine|wein|weinbar|beer|bier|brewery|brauerei|rooftop|speakeasy|negroni|spritz|aperitivo|happy hour|nightlife|club|drinks?)\b/i],
+  ["kaffee", /\b(caf[eé]|coffee|kaffee|espresso|flat white|latte|cappuccino|matcha|roaster[sy]?|bakery|b[äa]ckerei|croissant|croissanterie|pastry|patisserie|brunch|breakfast|fr[üu]hst[üu]ck|donuts?|cake|kuchen|gelato|ice cream|glace)\b/i],
+  ["abendessen", /\b(restaurant|dinner|abendessen|lunch|mittagessen|food|essen|eats|pizza|pizzeria|pasta|ramen|sushi|tacos?|burgers?|steak|dumplings?|noodles?|thai|vietnamese|italian|bistro|trattoria|osteria|izakaya|bbq|grill|seafood|fish|degustation|tasting menu|fine dining|eatery|kitchen)\b/i],
+  ["sehenswuerdigkeiten", /\b(museum|gallery|galerie|street ?art|lane|graffiti|cathedral|kirche|church|temple|tempel|monument|viewpoint|aussicht|lookout|tower|turm|bridge|br[üu]cke|castle|schloss|burg|landmark|sehensw[üu]rdig\w*|historic|architecture|botanic)\b/i],
+  ["aktivitaeten", /\b(beach|strand|hike|hiking|wandern|wanderung|trail|walk|surf\w*|snorkel\w*|dive|diving|tauchen|kayak|boat|bootstour|tour|market|markt|shopping|park|pool|swim\w*|zoo|aquarium|spa|sauna|hot springs?|waterfall|wasserfall|island|insel|climb\w*|bike|velo|picnic|sunset|sunrise|activity|aktivit\w*)\b/i],
+];
+const CAT_EMOJI = { kaffee: /[☕🥐🍩🧁🍰🥞🧇🍦]/gu, bar: /[🍸🍷🍺🍹🥂🍻🥃🍾]/gu, abendessen: /[🍝🍕🍣🍜🍔🌮🥟🍛🍲🥩🍤🍽]/gu,
+  sehenswuerdigkeiten: /[🏛🗼🏰⛪🖼🌉🗽]/gu, aktivitaeten: /[🏖🏄🥾🤿🚤🛶🏊🚴⛰🌊🏝🎢]/gu };
+function categoryFromText(text) {
+  text = String(text || "");
+  let best = null, bestN = 0, bestPos = Infinity;
+  for (const [cat, re] of CAT_WORDS) {
+    const hits = [...text.matchAll(new RegExp(re.source, "gi")), ...text.matchAll(CAT_EMOJI[cat])];
+    const n = hits.length; if (!n) continue;
+    const pos = Math.min(...hits.map(h => h.index));
+    if (n > bestN || (n === bestN && pos < bestPos)) { best = cat; bestN = n; bestPos = pos; }
+  }
+  return best;
+}
+/* Reihenfolge: Name/Caption-Zeile → OSM-Tag → ganze Caption → Standard */
+function pickCategory(cand, query, caption) {
+  return categoryFromText([cand.name, query].join(" "))
+    || cand.osmCategory
+    || categoryFromText(caption)
+    || "sehenswuerdigkeiten";
 }
 async function overpassDetails(osmType, osmId) {
   const t = { N: "node", W: "way", R: "relation" }[String(osmType).toUpperCase()];
@@ -410,8 +442,11 @@ function renderMarkers(list) {
   markerLayer.clearLayers(); markers.clear();
   for (const p of list) {
     if (p.lat == null) continue;
-    const m = L.circleMarker([p.lat, p.lng], { radius: 9, color: "#fff", weight: 2, fillColor: catColor(p.category), fillOpacity: 1 })
-      .bindPopup(() => popupHtml(p));
+    const icon = L.divIcon({
+      className: "", iconSize: [34, 34], iconAnchor: [17, 17], popupAnchor: [0, -16],
+      html: `<div class="pin-icon" style="background:${catColor(p.category)}">${catIcon(p.category)}</div>`,
+    });
+    const m = L.marker([p.lat, p.lng], { icon, title: p.name }).bindPopup(() => popupHtml(p));
     m.addTo(markerLayer); markers.set(p.id, m);
   }
 }
@@ -446,14 +481,14 @@ function renderPills() {
   const counts = Object.fromEntries(CAT_KEYS.map(k => [k, 0]));
   pins.forEach(p => counts[p.category]++);
   $("#pills").innerHTML = CATEGORIES.map(c =>
-    `<button class="pill ${activeCats.has(c.key) ? "" : "off"}" data-cat="${c.key}"><span class="dot" style="background:${catColor(c.key)}"></span>${c.label}<span class="n">${counts[c.key]}</span></button>`).join("");
+    `<button class="pill ${activeCats.has(c.key) ? "" : "off"}" data-cat="${c.key}"><span>${c.icon}</span>${c.label}<span class="n">${counts[c.key]}</span></button>`).join("");
 }
 function cardHtml(p) {
   const d = myPos && p.lat != null ? fmtKm(distKm(myPos, p)) : "";
   return `<div class="card ${p.id === selectedId ? "sel" : ""}" data-id="${esc(p.id)}">
     <div class="top"><div><div class="name">${esc(p.name)}</div>
       <div class="meta">${[d, p.address || p.city, p.lat == null ? "⚠︎ ohne Koordinaten" : ""].filter(Boolean).map(esc).join(" · ")}</div></div>
-      <span class="tag" style="background:${catColor(p.category)}">${esc(catLabel(p.category))}</span></div>
+      <span class="tag" style="background:${catColor(p.category)}">${catIcon(p.category)} ${esc(catLabel(p.category))}</span></div>
     ${p.note ? `<div class="meta" style="color:var(--fg)">${esc(p.note)}</div>` : ""}
     <div class="actions">
       ${p.url ? `<a class="btn sm" href="${esc(p.url)}" target="_blank" rel="noopener">▶︎ Reel</a>` : ""}
@@ -508,7 +543,7 @@ function renderCandidates() {
         <div style="font-weight:600">${esc(c.name)}</div>
         <div class="addr">${c.lat == null ? "Nicht gefunden – unten manuell suchen" : esc([c.address, c.country].filter(Boolean).join(", "))}</div>
         ${c.query ? `<div class="q">aus: «${esc(c.query)}»</div>` : ""}
-        ${c.lat != null ? `<select data-ci="${i}">${CATEGORIES.map(k => `<option value="${k.key}" ${k.key === c.category ? "selected" : ""}>${k.label}</option>`).join("")}</select>` : ""}
+        ${c.lat != null ? `<select data-ci="${i}">${CATEGORIES.map(k => `<option value="${k.key}" ${k.key === c.category ? "selected" : ""}>${k.icon} ${k.label}</option>`).join("")}</select>` : ""}
       </div></div>`).join("");
   $("#saveBtn").disabled = !candidates.some(c => c.checked && c.lat != null);
 }
@@ -528,7 +563,7 @@ async function detect() {
     if (res.length) {
       const r = res[0];
       if (!candidates.some(c => c.lat != null && Math.abs(c.lat - r.lat) < 1e-4 && Math.abs(c.lng - r.lng) < 1e-4))
-        candidates.push({ ...r, query: q, checked: true });
+        candidates.push({ ...r, query: q, checked: true, category: pickCategory(r, q, text) });
     } else candidates.push({ name: q, query: q, lat: null, lng: null, checked: false });
     renderCandidates();
     await sleep(250);
@@ -580,7 +615,7 @@ function openDetail(id) {
       ${p.lat != null ? `<button class="btn sm" id="dShow">Auf Karte</button>` : ""}
     </div>
     <label class="lbl">Name</label><input type="text" id="dName" value="${esc(p.name)}">
-    <label class="lbl">Kategorie</label><select id="dCat">${CATEGORIES.map(k => `<option value="${k.key}" ${k.key === p.category ? "selected" : ""}>${k.label}</option>`).join("")}</select>
+    <label class="lbl">Kategorie</label><select id="dCat">${CATEGORIES.map(k => `<option value="${k.key}" ${k.key === p.category ? "selected" : ""}>${k.icon} ${k.label}</option>`).join("")}</select>
     <label class="lbl">Webseite</label><input type="url" id="dWeb" value="${esc(p.website)}" placeholder="https://…">
     <label class="lbl">Reel-Link</label><input type="url" id="dUrl" value="${esc(p.url)}">
     <label class="lbl">Notiz</label><textarea id="dNote" style="min-height:70px" placeholder="z.B. Flat White probieren">${esc(p.note)}</textarea>
@@ -667,7 +702,7 @@ function bind() {
     const b = e.target.closest("[data-ri]"); if (!b) return;
     const r = manualSearch.res[Number(b.dataset.ri)];
     candidates = candidates.filter(c => c.lat != null);
-    candidates.push({ ...r, checked: true });
+    candidates.push({ ...r, checked: true, category: pickCategory(r, "", $("#addCaption").value) });
     $("#manualResults").innerHTML = ""; $("#manualQ").value = "";
     renderCandidates();
   });
