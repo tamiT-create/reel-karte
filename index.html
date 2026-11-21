@@ -103,6 +103,7 @@
   .cand .body{flex:1;min-width:0}
   .cand .addr{font-size:12px;color:var(--muted);overflow:hidden;text-overflow:ellipsis}
   .cand select{margin-top:6px;padding:6px 8px;font-size:13px}
+  .approx{font-size:12px;color:#b7791f;background:#fff7d6;border-radius:8px;padding:4px 8px;margin-top:4px}
   .cand .q{font-size:11px;color:var(--muted)}
   .results button{display:block;width:100%;text-align:left;border:0;border-bottom:1px solid var(--border);background:none;padding:8px 4px;cursor:pointer}
   .results button:hover{background:var(--accent)}
@@ -450,7 +451,10 @@ async function geocode(q, limit = 5) {
       if (best()?._score >= 0.75) break;
     }
   }
-  pool.sort((a, b) => b._score - a._score);
+  const qNum = (q.match(/(?:^|[\s,\/])(\d+[a-z]?)\s+[a-z]/i) || [])[1];
+  for (const r of pool) r.approx = !!qNum && String(r.housenumber || "").toLowerCase() !== qNum.toLowerCase();
+  // bei gleicher Bewertung: exakte Hausnummer vor «ungefähr»
+  pool.sort((a, b) => (b._score - a._score) || (a.approx - b.approx));
   const good = pool.filter(r => r._score >= 0.4);
   return (good.length ? good : []).slice(0, limit);
 }
@@ -702,6 +706,7 @@ function renderCandidates() {
       <div class="body">
         <div style="font-weight:600">${esc(c.name)}</div>
         <div class="addr">${c.lat == null ? "Nicht gefunden – unten manuell suchen" : esc([c.address, c.country].filter(Boolean).join(", "))}</div>
+        ${c.approx ? `<div class="approx">≈ Nur die Strasse gefunden – Pin liegt ungefähr. Für die genaue Stelle Koordinaten aus Google Maps einfügen.</div>` : ""}
         ${c.query ? `<div class="q">aus: «${esc(c.query)}»</div>` : ""}
         ${c.lat != null ? `<select data-ci="${i}">${CATEGORIES.map(k => `<option value="${k.key}" ${k.key === c.category ? "selected" : ""}>${k.icon} ${k.label}</option>`).join("")}</select>` : ""}
       </div></div>`).join("");
@@ -740,7 +745,7 @@ async function manualSearch() {
   if (!res.length && city) res = await geocode(q, 5);
   manualSearch.res = res;
   $("#manualResults").innerHTML = res.length
-    ? res.map((r, i) => `<button data-ri="${i}"><strong>${esc(r.name)}</strong><br><span class="hint">${esc([r.address, r.country].filter(Boolean).join(", "))}</span></button>`).join("")
+    ? res.map((r, i) => `<button data-ri="${i}"><strong>${esc(r.name)}</strong>${r.approx ? ' <span class="hint">≈ ungefähr</span>' : ""}<br><span class="hint">${esc([r.address, r.country].filter(Boolean).join(", "))}</span></button>`).join("")
     : '<div class="hint" style="padding:8px 4px">Keine Treffer. Versuch es mit Strasse oder Stadtteil.</div>';
 }
 function saveCandidates() {
@@ -817,7 +822,7 @@ function openDetail(id) {
     const r = res[0];
     pendingGeo = { lat: r.lat, lng: r.lng, country: r.country || p.country, osmType: r.osmType, osmId: r.osmId };
     if (!$("#dCity").value.trim() && r.city) $("#dCity").value = r.city;
-    $("#dGeoHint").textContent = `Gefunden: ${[r.address || r.name, r.country].filter(Boolean).join(", ")} – mit «Speichern» übernehmen.`;
+    $("#dGeoHint").textContent = `Gefunden: ${[r.address || r.name, r.country].filter(Boolean).join(", ")}${r.approx ? " (≈ nur Strasse, Pin ungefähr – für die genaue Stelle Koordinaten aus Google Maps einfügen)" : ""} – mit «Speichern» übernehmen.`;
   };
   $("#dDel").onclick = () => {
     if (!confirm(`«${p.name}» wirklich löschen?`)) return;
