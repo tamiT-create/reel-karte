@@ -129,6 +129,7 @@
         <button class="btn sm ghost" id="exportBtn">⬇︎ Backup</button>
         <button class="btn sm ghost" id="importBtn">⬆︎ Backup laden</button>
         <input type="file" id="importFile" accept=".json,application/json" hidden>
+        <button class="btn sm ghost" id="syncBtn">☁︎ Sync</button>
         <span class="count" id="count"></span>
       </div>
     </aside>
@@ -187,6 +188,11 @@
   <div class="sheet" id="detailSheet"></div>
 </div>
 
+<!-- Sync -->
+<div class="overlay" id="syncOverlay">
+  <div class="sheet" id="syncSheet"></div>
+</div>
+
 <div class="toast" id="toast"></div>
 
 <script>
@@ -205,6 +211,9 @@ const catLabel = k => (CATEGORIES.find(c => c.key === k) || CATEGORIES[4]).label
 const catColor = k => getComputedStyle(document.documentElement).getPropertyValue("--" + k).trim() || "#555";
 const STORE_KEY = "reel-karte:pins:v2";
 const CITY_KEY = "reel-karte:city:v1";
+const DEL_KEY = "reel-karte:deleted:v1";
+const SYNC_KEY = "reel-karte:sync:v1";
+const GIST_FILE = "reel-karte.json";
 
 /* ---------- Helfer ---------- */
 const $ = s => document.querySelector(s);
@@ -243,25 +252,34 @@ const routeUrl = p => p.lat != null
 
 /* ---------- Speicher ---------- */
 let pins = [];
+let deleted = {};
 function load() {
   try { pins = JSON.parse(localStorage.getItem(STORE_KEY) || "[]"); if (!Array.isArray(pins)) pins = []; }
   catch { pins = []; }
+  pins = pins.map(normalisePin).filter(Boolean);
+  try { deleted = JSON.parse(localStorage.getItem(DEL_KEY) || "{}") || {}; } catch { deleted = {}; }
 }
 function save() {
-  try { localStorage.setItem(STORE_KEY, JSON.stringify(pins)); }
-  catch { toast("Speichern fehlgeschlagen – bitte Backup machen."); }
+  try {
+    localStorage.setItem(STORE_KEY, JSON.stringify(pins));
+    localStorage.setItem(DEL_KEY, JSON.stringify(deleted));
+  } catch { toast("Speichern fehlgeschlagen – bitte Backup machen."); }
+  Sync.schedule();
 }
+function touch(p) { p.updatedAt = Date.now(); }
+function removePin(id) { pins = pins.filter(x => x.id !== id); deleted[id] = Date.now(); }
+const goodTitle = t => !!t && String(t).trim().length > 1 && !/@|instagram|^reel\b|^https?:/i.test(String(t));
 function normalisePin(o) {
   if (!o || typeof o !== "object") return null;
   const lat = o.lat != null ? Number(o.lat) : null, lng = o.lng != null ? Number(o.lng) : null;
   return {
     id: String(o.id || newId()),
     url: o.url ? (sanitiseReelUrl(o.url) || String(o.url)) : "",
-    name: String(o.name || o.placeName || o.title || "Unbenannter Ort"),
+    name: String(o.name || (goodTitle(o.title) ? o.title : "") || o.placeName || o.title || "Unbenannter Ort"),
     caption: String(o.caption || ""),
     note: String(o.note || ""),
     category: CAT_KEYS.includes(o.category) ? o.category : "sehenswuerdigkeiten",
-    address: String(o.address || ""),
+    address: String(o.address || (o.name || !goodTitle(o.title) ? "" : (o.placeName && o.placeName !== o.title ? o.placeName : ""))),
     city: String(o.city || ""),
     country: String(o.country || ""),
     lat: Number.isFinite(lat) ? lat : null,
@@ -270,6 +288,7 @@ function normalisePin(o) {
     hours: String(o.hours || ""),
     osmType: o.osmType || "", osmId: o.osmId || "",
     createdAt: Number(o.createdAt) || Date.now(),
+    updatedAt: Number(o.updatedAt) || Number(o.createdAt) || Date.now(),
   };
 }
 
@@ -385,7 +404,7 @@ async function enrich(pin) {
   let changed = false;
   if (d.website && !pin.website) { pin.website = /^https?:/.test(d.website) ? d.website : "https://" + d.website; changed = true; }
   if (d.hours && !pin.hours) { pin.hours = d.hours; changed = true; }
-  if (changed) { save(); render(); }
+  if (changed) { touch(pin); save(); render(); }
 }
 
 /* ---------- Ortserkennung aus Caption ---------- */
@@ -500,7 +519,7 @@ function render() {
   renderPills();
   const vis = visiblePins();
   renderMarkers(vis);
-  $("#count").textContent = `${pins.length} ${pins.length === 1 ? "Pin" : "Pins"} · auf diesem Gerät gespeichert`;
+  $("#count").textContent = `${pins.length} ${pins.length === 1 ? "Pin" : "Pins"} · ${Sync.statusText()}`;
   if (!vis.length) {
     $("#list").innerHTML = `<div class="empty">${pins.length ? "Nichts gefunden – passe Suche oder Filter an." : "Noch keine Pins. Füge oben einen Reel-Link ein."}</div>`;
     return;
@@ -590,7 +609,7 @@ function saveCandidates() {
   let added = 0; const fresh = [];
   for (const c of chosen) {
     const dup = pins.find(p => p.lat != null && Math.abs(p.lat - c.lat) < 1e-4 && Math.abs(p.lng - c.lng) < 1e-4);
-    if (dup) { if (url && !dup.url) dup.url = url; continue; }
+    if (dup) { if (url && !dup.url) { dup.url = url; touch(dup); } continue; }
     const pin = normalisePin({ ...c, id: newId(), url, caption, createdAt: Date.now() });
     pins.push(pin); fresh.push(pin); added++;
   }
@@ -615,6 +634,10 @@ function openDetail(id) {
       ${p.lat != null ? `<button class="btn sm" id="dShow">Auf Karte</button>` : ""}
     </div>
     <label class="lbl">Name</label><input type="text" id="dName" value="${esc(p.name)}">
+    <label class="lbl">Adresse</label>
+    <div class="row"><input type="text" id="dAddr" value="${esc(p.address)}" placeholder="Strasse, Ort"><button class="btn sm" id="dGeo" title="Pin an diese Adresse verschieben">📍 Pin setzen</button></div>
+    <p class="hint" id="dGeoHint">Nach Änderung der Adresse «Pin setzen» tippen, damit der Pin auf der Karte mitwandert.</p>
+    <label class="lbl">Stadt</label><input type="text" id="dCity" value="${esc(p.city)}">
     <label class="lbl">Kategorie</label><select id="dCat">${CATEGORIES.map(k => `<option value="${k.key}" ${k.key === p.category ? "selected" : ""}>${k.icon} ${k.label}</option>`).join("")}</select>
     <label class="lbl">Webseite</label><input type="url" id="dWeb" value="${esc(p.website)}" placeholder="https://…">
     <label class="lbl">Reel-Link</label><input type="url" id="dUrl" value="${esc(p.url)}">
@@ -631,11 +654,28 @@ function openDetail(id) {
     const w = $("#dWeb").value.trim(); p.website = w && !/^https?:/.test(w) ? "https://" + w : w;
     p.url = sanitiseReelUrl($("#dUrl").value) || $("#dUrl").value.trim();
     p.note = $("#dNote").value.trim();
-    save(); closeOverlays(); render(); toast("Gespeichert.");
+    p.address = $("#dAddr").value.trim();
+    p.city = $("#dCity").value.trim();
+    if (pendingGeo) { Object.assign(p, pendingGeo); }
+    touch(p); save(); closeOverlays(); render(); toast("Gespeichert.");
+    if (pendingGeo) enrich(p);
+  };
+  let pendingGeo = null;
+  $("#dGeo").onclick = async () => {
+    const addr = $("#dAddr").value.trim(); if (!addr) { toast("Bitte zuerst eine Adresse eingeben."); return; }
+    const city = $("#dCity").value.trim();
+    $("#dGeoHint").innerHTML = '<span class="spinner"></span> Suche Adresse …';
+    let res = await geocode(city && !addr.toLowerCase().includes(city.toLowerCase()) ? `${addr}, ${city}` : addr, 1);
+    if (!res.length) res = await geocode(`${$("#dName").value.trim()} ${addr}`, 1);
+    if (!res.length) { $("#dGeoHint").textContent = "Adresse nicht gefunden – versuch es mit Strasse + Stadt."; return; }
+    const r = res[0];
+    pendingGeo = { lat: r.lat, lng: r.lng, country: r.country || p.country, osmType: r.osmType, osmId: r.osmId };
+    if (!$("#dCity").value.trim() && r.city) $("#dCity").value = r.city;
+    $("#dGeoHint").textContent = `Gefunden: ${[r.address || r.name, r.country].filter(Boolean).join(", ")} – mit «Speichern» übernehmen.`;
   };
   $("#dDel").onclick = () => {
     if (!confirm(`«${p.name}» wirklich löschen?`)) return;
-    pins = pins.filter(x => x.id !== p.id); save(); closeOverlays(); render(); toast("Pin gelöscht.");
+    removePin(p.id); save(); closeOverlays(); render(); toast("Pin gelöscht.");
   };
   const show = $("#dShow");
   if (show) show.onclick = () => { closeOverlays(); setView("map"); map.setView([p.lat, p.lng], 16); markers.get(p.id)?.openPopup(); };
@@ -655,11 +695,15 @@ async function importBackup(file) {
     const data = JSON.parse(await file.text());
     if (!Array.isArray(data)) throw 0;
     const incoming = data.map(normalisePin).filter(Boolean);
-    const ids = new Set(pins.map(p => p.id));
-    let added = 0;
-    for (const p of incoming) if (!ids.has(p.id)) { pins.push(p); added++; }
+    let added = 0, fixed = 0;
+    for (const p of incoming) {
+      const ex = pins.find(x => x.id === p.id);
+      if (!ex) { pins.push(p); delete deleted[p.id]; added++; continue; }
+      // Früher importierte Pins: Adresse stand im Namen → korrigieren
+      if (!ex.address && p.address) { ex.name = p.name; ex.address = p.address; touch(ex); fixed++; }
+    }
     save(); render(); fitAll();
-    toast(`Backup geladen – ${added} Pins hinzugefügt.`);
+    toast(`Backup geladen – ${added} neu${fixed ? `, ${fixed} korrigiert` : ""}.`);
   } catch { toast("Das war leider keine gültige Backup-Datei."); }
 }
 
@@ -692,6 +736,7 @@ function bind() {
   $("#nearBtnList").onclick = () => { locate(); };
   $("#nearBtnMap").onclick = () => { locate(); };
   $("#exportBtn").onclick = exportBackup;
+  $("#syncBtn").onclick = () => Sync.openSettings();
   $("#importBtn").onclick = () => $("#importFile").click();
   $("#importFile").onchange = e => { const f = e.target.files[0]; if (f) importBackup(f); e.target.value = ""; };
   $("#addUrl").addEventListener("input", updateOpenLink);
@@ -719,12 +764,143 @@ function bind() {
   document.addEventListener("keydown", e => { if (e.key === "Escape") closeOverlays(); });
 }
 
+/* ---------- Sync über GitHub Gist ---------- */
+const Sync = (() => {
+  let cfg = {}; try { cfg = JSON.parse(localStorage.getItem(SYNC_KEY) || "{}") || {}; } catch { cfg = {}; }
+  let timer = null, busy = false, again = false, state = "", lastAt = cfg.lastAt || 0;
+  const enabled = () => !!(cfg.token && cfg.gistId);
+  const persist = () => localStorage.setItem(SYNC_KEY, JSON.stringify(cfg));
+  const api = async (path, opts = {}) => {
+    const r = await fetch("https://api.github.com" + path, {
+      ...opts, cache: "no-store",
+      headers: { Authorization: "Bearer " + cfg.token, Accept: "application/vnd.github+json", ...(opts.body ? { "Content-Type": "application/json" } : {}) },
+    });
+    if (r.status === 401) throw new Error("auth");
+    if (!r.ok) throw new Error("http " + r.status);
+    return r.json();
+  };
+  const payload = () => JSON.stringify({ app: "reel-karte", version: 1, updatedAt: Date.now(), pins, deleted });
+  async function readRemote() {
+    const g = await api("/gists/" + cfg.gistId);
+    const f = g.files?.[GIST_FILE]; if (!f) return { pins: [], deleted: {} };
+    let text = f.content;
+    if (f.truncated && f.raw_url) text = await (await fetch(f.raw_url, { cache: "no-store" })).text();
+    try { return JSON.parse(text || "{}"); } catch { return { pins: [], deleted: {} }; }
+  }
+  function merge(remote) {
+    const rDel = remote.deleted || {};
+    for (const [id, t] of Object.entries(rDel)) if (!deleted[id] || deleted[id] < t) deleted[id] = t;
+    const byId = new Map(pins.map(p => [p.id, p]));
+    for (const raw of remote.pins || []) {
+      const rp = normalisePin(raw); if (!rp) continue;
+      const lp = byId.get(rp.id);
+      if (!lp || rp.updatedAt > lp.updatedAt) byId.set(rp.id, rp);
+    }
+    pins = [...byId.values()].filter(p => !(deleted[p.id] && deleted[p.id] >= p.updatedAt));
+    // alte Lösch-Markierungen nach 60 Tagen vergessen
+    const cutoff = Date.now() - 60 * 864e5;
+    for (const [id, t] of Object.entries(deleted)) if (t < cutoff) delete deleted[id];
+    localStorage.setItem(STORE_KEY, JSON.stringify(pins));
+    localStorage.setItem(DEL_KEY, JSON.stringify(deleted));
+  }
+  async function run() {
+    if (!enabled()) return;
+    if (busy) { again = true; return; }
+    if (!navigator.onLine) { state = "offline"; render(); return; }
+    busy = true; state = "läuft"; updateBadge();
+    try {
+      const remote = await readRemote();
+      const before = JSON.stringify(pins);
+      merge(remote);
+      await api("/gists/" + cfg.gistId, { method: "PATCH", body: JSON.stringify({ files: { [GIST_FILE]: { content: payload() } } }) });
+      lastAt = cfg.lastAt = Date.now(); persist(); state = "ok";
+      if (JSON.stringify(pins) !== before) render(); else updateBadge();
+    } catch (e) {
+      state = e.message === "auth" ? "auth" : "fehler"; render();
+      if (e.message === "auth") toast("Sync: Der GitHub-Schlüssel ist ungültig oder abgelaufen.");
+    } finally {
+      busy = false;
+      if (again) { again = false; run(); }
+    }
+  }
+  function schedule() { if (!enabled()) return; clearTimeout(timer); timer = setTimeout(run, 1200); }
+  function statusText() {
+    if (!enabled()) return "nur auf diesem Gerät";
+    if (state === "offline") return "offline – sync folgt";
+    if (state === "auth") return "⚠︎ Sync-Schlüssel prüfen";
+    if (state === "fehler") return "⚠︎ Sync fehlgeschlagen";
+    if (state === "läuft") return "synchronisiere …";
+    return lastAt ? "☁︎ synchron " + new Date(lastAt).toLocaleTimeString("de-CH", { hour: "2-digit", minute: "2-digit" }) : "☁︎ Sync aktiv";
+  }
+  function updateBadge() { const c = $("#count"); if (c) c.textContent = `${pins.length} ${pins.length === 1 ? "Pin" : "Pins"} · ${statusText()}`; }
+  async function connect(token) {
+    cfg = { token: token.trim() };
+    // vorhandenen Gist suchen (zweites Gerät), sonst neu anlegen
+    for (let page = 1; page <= 3 && !cfg.gistId; page++) {
+      const list = await api(`/gists?per_page=100&page=${page}`);
+      const hit = list.find(g => g.files && g.files[GIST_FILE]);
+      if (hit) cfg.gistId = hit.id;
+      if (list.length < 100) break;
+    }
+    if (!cfg.gistId) {
+      const g = await api("/gists", { method: "POST", body: JSON.stringify({ description: "Reel-Karte Pins (automatisch synchronisiert)", public: false, files: { [GIST_FILE]: { content: payload() } } }) });
+      cfg.gistId = g.id;
+    }
+    persist(); await run();
+  }
+  function disconnect() { cfg = {}; localStorage.removeItem(SYNC_KEY); state = ""; render(); }
+  function openSettings() {
+    const sh = $("#syncSheet");
+    sh.innerHTML = enabled() ? `
+      <button class="btn sm ghost close" data-close>✕</button>
+      <h2>☁︎ Sync ist aktiv</h2>
+      <p class="hint">Deine Pins werden automatisch mit deinem GitHub-Konto abgeglichen. Auf jedem weiteren Gerät einfach denselben Schlüssel eingeben.</p>
+      <p style="font-size:14px">Status: ${esc(statusText())}</p>
+      <div class="row" style="margin-top:16px;justify-content:space-between">
+        <button class="btn danger ghost" id="sOff">Sync auf diesem Gerät beenden</button>
+        <button class="btn primary" id="sNow">Jetzt synchronisieren</button>
+      </div>` : `
+      <button class="btn sm ghost close" data-close>✕</button>
+      <h2>☁︎ Sync einrichten</h2>
+      <p class="hint">Damit Handy und Laptop dieselben Pins sehen. Gratis über dein GitHub-Konto.</p>
+      <ol style="font-size:14px;padding-left:20px;line-height:1.5">
+        <li>Auf GitHub: <a href="https://github.com/settings/tokens/new?scopes=gist&description=Reel-Karte" target="_blank" rel="noopener">neuen Schlüssel (Token) erstellen</a></li>
+        <li>Bei «Expiration» eine Dauer wählen, die deine Reise abdeckt. Nur das Häkchen <b>gist</b> ist gesetzt – so lassen.</li>
+        <li>Ganz unten «Generate token», dann den Schlüssel (beginnt mit <code>ghp_</code>) kopieren.</li>
+        <li>Hier einfügen und verbinden. Auf weiteren Geräten denselben Schlüssel verwenden.</li>
+      </ol>
+      <label class="lbl" for="sTok">GitHub-Schlüssel</label>
+      <input type="text" id="sTok" placeholder="ghp_…" autocomplete="off" autocapitalize="off" spellcheck="false">
+      <p class="hint">Der Schlüssel bleibt nur auf diesem Gerät gespeichert und darf ausschliesslich deine Gists bearbeiten.</p>
+      <div class="row" style="margin-top:16px;justify-content:flex-end">
+        <button class="btn ghost" data-close>Abbrechen</button>
+        <button class="btn primary" id="sGo">Verbinden</button>
+      </div>`;
+    $("#syncOverlay").classList.add("open");
+    const go = $("#sGo");
+    if (go) go.onclick = async () => {
+      const t = $("#sTok").value.trim();
+      if (!/^(ghp_|github_pat_)\w+/.test(t)) { toast("Das sieht nicht wie ein GitHub-Schlüssel aus."); return; }
+      go.disabled = true; go.innerHTML = '<span class="spinner"></span> Verbinde …';
+      try { await connect(t); closeOverlays(); render(); fitAll(); toast("Sync aktiv – deine Pins sind jetzt in der Cloud."); }
+      catch (e) { cfg = {}; localStorage.removeItem(SYNC_KEY); go.disabled = false; go.textContent = "Verbinden";
+        toast(e.message === "auth" ? "Schlüssel ungültig – bitte neu kopieren." : "Verbindung fehlgeschlagen. Bist du online?"); }
+    };
+    const now = $("#sNow"); if (now) now.onclick = async () => { now.disabled = true; await run(); closeOverlays(); toast(statusText()); };
+    const off = $("#sOff"); if (off) off.onclick = () => { if (confirm("Sync auf diesem Gerät beenden? Die Pins bleiben hier gespeichert.")) { disconnect(); closeOverlays(); } };
+  }
+  window.addEventListener("online", () => run());
+  document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") run(); });
+  return { schedule, run, statusText, openSettings, enabled };
+})();
+
 /* ---------- Start ---------- */
 load();
 initMap();
 bind();
 render();
 fitAll();
+if (Sync.enabled()) Sync.run();
 // Teilen per Link: ?add=<reel-link>&text=<caption>
 (() => {
   const sp = new URLSearchParams(location.search);
