@@ -1,0 +1,705 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Reel-Karte</title>
+<meta name="description" content="Orte aus Instagram-Reels als Pins auf einer Karte.">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Reel-Karte">
+<meta name="theme-color" content="#ffffff">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<style>
+  :root{
+    --bg:#f7f6f3; --card:#fff; --fg:#1c1b19; --muted:#74706a; --border:#e6e3dd;
+    --primary:#1c1b19; --primary-fg:#fff; --accent:#f0eee9; --radius:14px;
+    --kaffee:#a0673a; --abendessen:#d9480f; --bar:#7048e8; --aktivitaeten:#2b8a3e; --sehenswuerdigkeiten:#1971c2;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%;background:var(--bg);color:var(--fg);
+    font:15px/1.4 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}
+  button,input,select,textarea{font:inherit;color:inherit}
+  .app{display:flex;flex-direction:column;height:100%}
+  header{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 16px;
+    background:var(--card);border-bottom:1px solid var(--border);padding-top:max(12px,env(safe-area-inset-top))}
+  header h1{margin:0;font-size:18px;letter-spacing:-.01em}
+  header p{margin:0;font-size:12px;color:var(--muted)}
+  .toggle{display:flex;border:1px solid var(--border);border-radius:999px;padding:3px;background:var(--bg)}
+  .toggle button{border:0;background:none;padding:6px 12px;border-radius:999px;font-size:13px;color:var(--muted);cursor:pointer}
+  .toggle button.on{background:var(--primary);color:var(--primary-fg)}
+  main{flex:1;min-height:0;display:grid;grid-template-columns:400px 1fr}
+  aside{overflow-y:auto;border-right:1px solid var(--border);padding:16px;display:flex;flex-direction:column;gap:12px}
+  #map{height:100%;width:100%}
+  .mapwrap{position:relative;min-height:0}
+  .fab{position:absolute;z-index:500;right:12px;bottom:calc(16px + env(safe-area-inset-bottom));display:flex;flex-direction:column;gap:8px}
+  .fab button{box-shadow:0 2px 10px rgba(0,0,0,.18)}
+  @media (max-width:767px){
+    main{grid-template-columns:1fr}
+    main.show-map aside{display:none}
+    main.show-list .mapwrap{display:none}
+  }
+  @media (min-width:768px){ .toggle{display:none} }
+  .btn{border:1px solid var(--border);background:var(--card);border-radius:12px;padding:9px 14px;cursor:pointer;
+    display:inline-flex;align-items:center;gap:6px;justify-content:center;text-decoration:none;color:var(--fg);font-size:14px}
+  .btn.primary{background:var(--primary);color:var(--primary-fg);border-color:var(--primary)}
+  .btn.ghost{border-color:transparent;background:transparent}
+  .btn.sm{padding:6px 10px;font-size:13px;border-radius:10px}
+  .btn.danger{color:#c92a2a}
+  .btn:disabled{opacity:.5;cursor:default}
+  input[type=text],input[type=url],input[type=search],textarea,select{width:100%;border:1px solid var(--border);
+    background:var(--card);border-radius:12px;padding:9px 12px;outline:none}
+  input:focus,textarea:focus,select:focus{border-color:#999}
+  textarea{min-height:110px;resize:vertical}
+  .row{display:flex;gap:8px;align-items:center}
+  .row > input{flex:1}
+  .pills{display:flex;flex-wrap:wrap;gap:6px}
+  .pill{border:1px solid var(--border);background:var(--card);border-radius:999px;padding:5px 10px;font-size:13px;cursor:pointer;
+    display:inline-flex;gap:6px;align-items:center}
+  .pill .dot{width:9px;height:9px;border-radius:50%}
+  .pill.off{opacity:.45}
+  .pill .n{color:var(--muted);font-size:12px}
+  .group h3{margin:8px 0 6px;font-size:13px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;font-weight:600}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:12px;margin-bottom:8px;cursor:pointer}
+  .card.sel{border-color:var(--fg)}
+  .card .top{display:flex;justify-content:space-between;gap:8px;align-items:flex-start}
+  .card .name{font-weight:600}
+  .card .meta{font-size:12px;color:var(--muted);margin-top:2px}
+  .card .actions{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+  .tag{font-size:11px;padding:2px 8px;border-radius:999px;color:#fff;white-space:nowrap}
+  .empty{border:1px dashed var(--border);border-radius:var(--radius);padding:20px;text-align:center;color:var(--muted);font-size:14px;background:var(--card)}
+  .foot{display:flex;flex-wrap:wrap;gap:6px;align-items:center;border-top:1px solid var(--border);padding-top:10px;margin-top:auto}
+  .foot .count{margin-left:auto;font-size:12px;color:var(--muted)}
+  .hint{font-size:12px;color:var(--muted)}
+  label.lbl{font-size:13px;font-weight:600;display:block;margin:10px 0 4px}
+  /* Sheet */
+  .overlay{position:fixed;inset:0;background:rgba(0,0,0,.35);z-index:1000;display:none;align-items:flex-end;justify-content:center}
+  .overlay.open{display:flex}
+  .sheet{background:var(--card);width:100%;max-width:520px;max-height:92vh;overflow-y:auto;border-radius:18px 18px 0 0;
+    padding:18px 18px calc(24px + env(safe-area-inset-bottom))}
+  @media (min-width:768px){ .overlay{align-items:center} .sheet{border-radius:18px} }
+  .sheet h2{margin:0 0 4px;font-size:18px}
+  .sheet .close{float:right}
+  .cand{display:flex;gap:10px;align-items:flex-start;border:1px solid var(--border);border-radius:12px;padding:10px;margin-bottom:8px}
+  .cand input[type=checkbox]{margin-top:4px;width:18px;height:18px}
+  .cand .body{flex:1;min-width:0}
+  .cand .addr{font-size:12px;color:var(--muted);overflow:hidden;text-overflow:ellipsis}
+  .cand select{margin-top:6px;padding:6px 8px;font-size:13px}
+  .cand .q{font-size:11px;color:var(--muted)}
+  .results button{display:block;width:100%;text-align:left;border:0;border-bottom:1px solid var(--border);background:none;padding:8px 4px;cursor:pointer}
+  .results button:hover{background:var(--accent)}
+  .toast{position:fixed;left:50%;bottom:calc(24px + env(safe-area-inset-bottom));transform:translateX(-50%);background:var(--fg);color:#fff;
+    padding:10px 16px;border-radius:12px;font-size:14px;z-index:2000;opacity:0;transition:opacity .2s;pointer-events:none;max-width:90vw}
+  .toast.show{opacity:1}
+  .me-dot{width:16px;height:16px;border-radius:50%;background:#1c7ed6;border:3px solid #fff;box-shadow:0 0 0 2px rgba(28,126,214,.35)}
+  .leaflet-popup-content{margin:10px 12px;font-size:14px}
+  .leaflet-popup-content .pactions{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+  .leaflet-popup-content a.btn{color:var(--fg)}
+  .spinner{display:inline-block;width:14px;height:14px;border:2px solid currentColor;border-right-color:transparent;border-radius:50%;animation:spin .7s linear infinite}
+  @keyframes spin{to{transform:rotate(360deg)}}
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <div>
+      <h1>Reel-Karte</h1>
+      <p>Deine gespeicherten Reels, endlich mit Adresse.</p>
+    </div>
+    <div class="toggle" id="viewToggle">
+      <button data-v="map" class="on">Karte</button>
+      <button data-v="list">Liste</button>
+    </div>
+  </header>
+
+  <main id="main" class="show-map">
+    <aside>
+      <div class="row">
+        <input type="url" id="quickUrl" inputmode="url" placeholder="Reel-Link einfügen …">
+        <button class="btn primary" id="addBtn">+ Reel</button>
+      </div>
+      <input type="search" id="search" placeholder="Suche nach Name, Ort, Notiz">
+      <div class="pills" id="pills"></div>
+      <button class="btn" id="nearBtnList">📍 In meiner Nähe</button>
+      <div id="list"></div>
+      <div class="foot">
+        <button class="btn sm ghost" id="exportBtn">⬇︎ Backup</button>
+        <button class="btn sm ghost" id="importBtn">⬆︎ Backup laden</button>
+        <input type="file" id="importFile" accept=".json,application/json" hidden>
+        <span class="count" id="count"></span>
+      </div>
+    </aside>
+    <div class="mapwrap">
+      <div id="map"></div>
+      <div class="fab">
+        <button class="btn" id="nearBtnMap" title="In meiner Nähe">📍</button>
+        <button class="btn primary" id="addBtnMap" title="Reel hinzufügen">＋</button>
+      </div>
+    </div>
+  </main>
+</div>
+
+<!-- Hinzufügen -->
+<div class="overlay" id="addOverlay">
+  <div class="sheet">
+    <button class="btn sm ghost close" data-close>✕</button>
+    <h2>Reel hinzufügen</h2>
+    <p class="hint">Link einfügen, Caption oder Ortsnamen dazu und die Orte erkennen lassen.</p>
+
+    <label class="lbl" for="addUrl">Reel-Link</label>
+    <div class="row">
+      <input type="url" id="addUrl" placeholder="https://www.instagram.com/reel/…">
+      <a class="btn sm" id="openReelBtn" target="_blank" rel="noopener">Öffnen</a>
+    </div>
+
+    <label class="lbl" for="addCaption">Caption oder Ortsname</label>
+    <textarea id="addCaption" placeholder="Caption hier einfügen – oder einfach z.B. «Café Lune Fitzroy» eintippen"></textarea>
+    <p class="hint">Tipp: Reel mit «Öffnen» im Browser anzeigen und die Caption dort kopieren. Erkannt werden u.a. 📍-Zeilen, «Location:», nummerierte Listen und @-Accounts.</p>
+
+    <label class="lbl" for="addCity">Stadt / Gegend (optional, verbessert Treffer)</label>
+    <input type="text" id="addCity" placeholder="z.B. Melbourne">
+
+    <div class="row" style="margin-top:12px">
+      <button class="btn primary" id="detectBtn" style="flex:1">Orte erkennen</button>
+    </div>
+
+    <div id="candWrap" style="margin-top:14px"></div>
+
+    <label class="lbl" for="manualQ">Ort manuell suchen</label>
+    <div class="row">
+      <input type="search" id="manualQ" placeholder="Name des Lokals, Adresse …">
+      <button class="btn" id="manualBtn">Suchen</button>
+    </div>
+    <div class="results" id="manualResults"></div>
+
+    <div class="row" style="margin-top:16px;justify-content:flex-end">
+      <button class="btn ghost" data-close>Abbrechen</button>
+      <button class="btn primary" id="saveBtn" disabled>Pins setzen</button>
+    </div>
+  </div>
+</div>
+
+<!-- Details -->
+<div class="overlay" id="detailOverlay">
+  <div class="sheet" id="detailSheet"></div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+"use strict";
+/* ---------- Konstanten ---------- */
+const CATEGORIES = [
+  { key: "kaffee", label: "Kaffee" },
+  { key: "abendessen", label: "Abendessen" },
+  { key: "bar", label: "Bar" },
+  { key: "aktivitaeten", label: "Aktivitäten" },
+  { key: "sehenswuerdigkeiten", label: "Sehenswürdigkeiten" },
+];
+const CAT_KEYS = CATEGORIES.map(c => c.key);
+const catLabel = k => (CATEGORIES.find(c => c.key === k) || CATEGORIES[4]).label;
+const catColor = k => getComputedStyle(document.documentElement).getPropertyValue("--" + k).trim() || "#555";
+const STORE_KEY = "reel-karte:pins:v2";
+const CITY_KEY = "reel-karte:city:v1";
+
+/* ---------- Helfer ---------- */
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const newId = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+function toast(msg) {
+  const t = $("#toast"); t.textContent = msg; t.classList.add("show");
+  clearTimeout(toast._t); toast._t = setTimeout(() => t.classList.remove("show"), 2600);
+}
+function sanitiseReelUrl(v) {
+  try {
+    const u = new URL(String(v).trim());
+    if (!/(^|\.)instagram\.com$/.test(u.hostname)) return null;
+    const m = u.pathname.match(/^\/(?:[\w.]+\/)?(reel|reels|p|tv)\/([\w-]+)/);
+    if (!m) return null;
+    return `https://www.instagram.com/${m[1] === "reels" ? "reel" : m[1]}/${m[2]}/`;
+  } catch { return null; }
+}
+function findUrlInText(text) {
+  const m = String(text || "").match(/https?:\/\/\S+/g) || [];
+  for (const x of m) { const s = sanitiseReelUrl(x); if (s) return s; }
+  return null;
+}
+function distKm(a, b) {
+  const R = 6371, r = Math.PI / 180;
+  const dLat = (b.lat - a.lat) * r, dLng = (b.lng - a.lng) * r;
+  const h = Math.sin(dLat / 2) ** 2 + Math.cos(a.lat * r) * Math.cos(b.lat * r) * Math.sin(dLng / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(h));
+}
+const fmtKm = d => d < 1 ? Math.round(d * 1000) + " m" : d.toFixed(d < 10 ? 1 : 0) + " km";
+const googleSearch = p => "https://www.google.com/search?q=" + encodeURIComponent([p.name, p.city].filter(Boolean).join(" "));
+const routeUrl = p => p.lat != null
+  ? `https://www.google.com/maps/dir/?api=1&destination=${p.lat},${p.lng}`
+  : "https://www.google.com/maps/search/?api=1&query=" + encodeURIComponent([p.name, p.city].filter(Boolean).join(" "));
+
+/* ---------- Speicher ---------- */
+let pins = [];
+function load() {
+  try { pins = JSON.parse(localStorage.getItem(STORE_KEY) || "[]"); if (!Array.isArray(pins)) pins = []; }
+  catch { pins = []; }
+}
+function save() {
+  try { localStorage.setItem(STORE_KEY, JSON.stringify(pins)); }
+  catch { toast("Speichern fehlgeschlagen – bitte Backup machen."); }
+}
+function normalisePin(o) {
+  if (!o || typeof o !== "object") return null;
+  const lat = o.lat != null ? Number(o.lat) : null, lng = o.lng != null ? Number(o.lng) : null;
+  return {
+    id: String(o.id || newId()),
+    url: o.url ? (sanitiseReelUrl(o.url) || String(o.url)) : "",
+    name: String(o.name || o.placeName || o.title || "Unbenannter Ort"),
+    caption: String(o.caption || ""),
+    note: String(o.note || ""),
+    category: CAT_KEYS.includes(o.category) ? o.category : "sehenswuerdigkeiten",
+    address: String(o.address || ""),
+    city: String(o.city || ""),
+    country: String(o.country || ""),
+    lat: Number.isFinite(lat) ? lat : null,
+    lng: Number.isFinite(lng) ? lng : null,
+    website: String(o.website || ""),
+    hours: String(o.hours || ""),
+    osmType: o.osmType || "", osmId: o.osmId || "",
+    createdAt: Number(o.createdAt) || Date.now(),
+  };
+}
+
+/* ---------- Geodienste (gratis) ---------- */
+function biasPoint() {
+  if (myPos) return myPos;
+  if (map) { const c = map.getCenter(); if (map.getZoom() >= 9) return { lat: c.lat, lng: c.lng }; }
+  return null;
+}
+async function photon(q, limit = 5) {
+  const p = new URLSearchParams({ q, limit: String(limit) });
+  const b = biasPoint(); if (b) { p.set("lat", b.lat.toFixed(4)); p.set("lon", b.lng.toFixed(4)); }
+  const r = await fetch("https://photon.komoot.io/api/?" + p);
+  if (!r.ok) throw new Error("photon " + r.status);
+  const j = await r.json();
+  return (j.features || []).map(f => {
+    const pr = f.properties || {}, [lng, lat] = f.geometry.coordinates;
+    const street = [pr.street, pr.housenumber].filter(Boolean).join(" ");
+    return {
+      name: pr.name || street || q,
+      address: [street, pr.postcode, pr.city || pr.town || pr.village].filter(Boolean).join(", "),
+      city: pr.city || pr.town || pr.village || pr.county || pr.state || "",
+      country: pr.country || "",
+      lat, lng,
+      osmType: pr.osm_type || "", osmId: pr.osm_id || "",
+      category: guessCategory(pr.osm_key, pr.osm_value),
+    };
+  });
+}
+async function nominatim(q) {
+  const r = await fetch("https://nominatim.openstreetmap.org/search?format=jsonv2&addressdetails=1&extratags=1&limit=3&q=" + encodeURIComponent(q),
+    { headers: { "Accept-Language": "de,en" } });
+  if (!r.ok) return [];
+  const j = await r.json();
+  return j.map(x => {
+    const a = x.address || {};
+    return {
+      name: x.name || x.display_name.split(",")[0],
+      address: x.display_name.split(",").slice(0, 3).join(","),
+      city: a.city || a.town || a.village || a.suburb || a.state || "",
+      country: a.country || "",
+      lat: Number(x.lat), lng: Number(x.lon),
+      osmType: (x.osm_type || "")[0]?.toUpperCase() || "", osmId: x.osm_id || "",
+      category: guessCategory(x.category, x.type),
+      website: x.extratags?.website || x.extratags?.["contact:website"] || "",
+      hours: x.extratags?.opening_hours || "",
+    };
+  });
+}
+async function geocode(q, limit = 5) {
+  try { const r = await photon(q, limit); if (r.length) return r; } catch (e) { /* Fallback unten */ }
+  try { await sleep(1100); return await nominatim(q); } catch { return []; }
+}
+function guessCategory(key, val) {
+  val = String(val || ""); key = String(key || "");
+  if (/^(cafe|coffee|bakery|ice_cream|tea)$/.test(val)) return "kaffee";
+  if (/^(restaurant|fast_food|food_court|bistro)$/.test(val)) return "abendessen";
+  if (/^(bar|pub|nightclub|biergarten|wine_bar)$/.test(val)) return "bar";
+  if (/^(attraction|viewpoint|museum|gallery|artwork|monument|memorial|castle|ruins|place_of_worship|lighthouse)$/.test(val) || key === "historic") return "sehenswuerdigkeiten";
+  if (/^(park|beach|zoo|theme_park|aquarium|sports_centre|swimming_pool|marina|trailhead|nature_reserve|cinema|theatre|market|marketplace)$/.test(val) || key === "leisure" || key === "natural" || key === "shop") return "aktivitaeten";
+  return "sehenswuerdigkeiten";
+}
+async function overpassDetails(osmType, osmId) {
+  const t = { N: "node", W: "way", R: "relation" }[String(osmType).toUpperCase()];
+  if (!t || !osmId) return {};
+  const q = `[out:json][timeout:15];${t}(${osmId});out tags;`;
+  for (const ep of ["https://overpass-api.de/api/interpreter", "https://overpass.kumi.systems/api/interpreter"]) {
+    try {
+      const r = await fetch(ep, { method: "POST", body: "data=" + encodeURIComponent(q), headers: { "Content-Type": "application/x-www-form-urlencoded" } });
+      if (!r.ok) continue;
+      const tags = (await r.json()).elements?.[0]?.tags || {};
+      return {
+        website: tags.website || tags["contact:website"] || tags.url || "",
+        hours: tags.opening_hours || "",
+        instagram: tags["contact:instagram"] || "",
+      };
+    } catch { /* nächster Server */ }
+  }
+  return {};
+}
+async function enrich(pin) {
+  if (pin.website && pin.hours) return;
+  const d = await overpassDetails(pin.osmType, pin.osmId);
+  let changed = false;
+  if (d.website && !pin.website) { pin.website = /^https?:/.test(d.website) ? d.website : "https://" + d.website; changed = true; }
+  if (d.hours && !pin.hours) { pin.hours = d.hours; changed = true; }
+  if (changed) { save(); render(); }
+}
+
+/* ---------- Ortserkennung aus Caption ---------- */
+function cleanQuery(s) {
+  return String(s)
+    .replace(/https?:\/\/\S+/g, "")
+    .replace(/#[\p{L}\p{N}_]+/gu, "")
+    .replace(/\p{Extended_Pictographic}|️|⃣/gu, " ")
+    .replace(/[|•·]+/g, ",")
+    .replace(/\s+/g, " ")
+    .replace(/^[\s,:;\-–—]+|[\s,:;\-–—.!]+$/g, "")
+    .trim();
+}
+function extractQueries(text) {
+  const out = [];
+  const push = s => { s = cleanQuery(s); if (s.length >= 3 && s.length <= 90 && !out.some(x => x.toLowerCase() === s.toLowerCase())) out.push(s); };
+  const lines = String(text || "").split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+  for (const l of lines) {
+    const pin = l.search(/📍|📌|🗺/u);
+    if (pin >= 0) { push(l.slice(pin)); continue; }
+    const lab = l.match(/^(?:location|ort|adresse|address|where|wo|spot|place|name)\s*[:\-–]\s*(.+)$/i);
+    if (lab) { push(lab[1]); continue; }
+    const num = l.match(/^(?:\d{1,2}(?:️?⃣|[.)]))\s*(.+)$/u) || l.match(/^[①-⑳❶-❿]\s*(.+)$/u);
+    if (num) { push(num[1].split(/\s[–—-]\s/)[0] + (num[1].includes(" – ") || num[1].includes(" - ") ? ", " + num[1].split(/\s[–—-]\s/)[1] : "")); continue; }
+  }
+  for (const m of String(text || "").matchAll(/@([A-Za-z0-9_.]{3,30})/g)) {
+    push(m[1].replace(/[._]+/g, " "));
+  }
+  if (!out.length && lines.length && lines.join(" ").length <= 80) push(lines.join(" "));
+  return out.slice(0, 10);
+}
+
+/* ---------- Karte ---------- */
+let map, markerLayer, meMarker, myPos = null;
+const markers = new Map();
+function initMap() {
+  map = L.map("map", { zoomControl: true }).setView([-25, 134], 4);
+  L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+    maxZoom: 19, attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+  }).addTo(map);
+  markerLayer = L.layerGroup().addTo(map);
+}
+function popupHtml(p) {
+  return `<strong>${esc(p.name)}</strong><br><span style="color:#74706a;font-size:12px">${esc(catLabel(p.category))}${p.city ? " · " + esc(p.city) : ""}</span>
+    ${p.note ? `<div style="margin-top:4px;font-size:13px">${esc(p.note)}</div>` : ""}
+    <div class="pactions">
+      ${p.url ? `<a class="btn sm" href="${esc(p.url)}" target="_blank" rel="noopener">▶︎ Reel</a>` : ""}
+      <a class="btn sm" href="${esc(p.website || googleSearch(p))}" target="_blank" rel="noopener">${p.website ? "🌐 Webseite" : "🔎 Google"}</a>
+      <a class="btn sm" href="${esc(routeUrl(p))}" target="_blank" rel="noopener">🧭 Route</a>
+      <button class="btn sm" onclick="openDetail('${esc(p.id)}')">✎</button>
+    </div>`;
+}
+function renderMarkers(list) {
+  markerLayer.clearLayers(); markers.clear();
+  for (const p of list) {
+    if (p.lat == null) continue;
+    const m = L.circleMarker([p.lat, p.lng], { radius: 9, color: "#fff", weight: 2, fillColor: catColor(p.category), fillOpacity: 1 })
+      .bindPopup(() => popupHtml(p));
+    m.addTo(markerLayer); markers.set(p.id, m);
+  }
+}
+function fitAll() {
+  const pts = pins.filter(p => p.lat != null).map(p => [p.lat, p.lng]);
+  if (pts.length) map.fitBounds(pts, { padding: [40, 40], maxZoom: 15 });
+}
+function locate() {
+  if (!navigator.geolocation) { toast("Standort wird vom Browser nicht unterstützt."); return; }
+  toast("Standort wird gesucht …");
+  navigator.geolocation.getCurrentPosition(pos => {
+    myPos = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+    const icon = L.divIcon({ className: "", html: '<div class="me-dot"></div>', iconSize: [16, 16], iconAnchor: [8, 8] });
+    if (meMarker) meMarker.setLatLng([myPos.lat, myPos.lng]); else meMarker = L.marker([myPos.lat, myPos.lng], { icon, zIndexOffset: 1000 }).addTo(map);
+    map.setView([myPos.lat, myPos.lng], 15);
+    sortByDistance = true; render();
+    const near = pins.filter(p => p.lat != null && distKm(myPos, p) <= 2).length;
+    toast(near ? `${near} Pin${near === 1 ? "" : "s"} im Umkreis von 2 km` : "Hier in der Nähe ist noch nichts gespeichert.");
+  }, err => {
+    toast(err.code === 1 ? "Standortzugriff wurde nicht erlaubt." : "Standort konnte nicht ermittelt werden.");
+  }, { enableHighAccuracy: true, timeout: 12000, maximumAge: 60000 });
+}
+
+/* ---------- Liste ---------- */
+let activeCats = new Set(CAT_KEYS), searchTerm = "", sortByDistance = false, selectedId = null;
+function visiblePins() {
+  const q = searchTerm.toLowerCase();
+  return pins.filter(p => activeCats.has(p.category) &&
+    (!q || [p.name, p.city, p.address, p.note, p.caption].join(" ").toLowerCase().includes(q)));
+}
+function renderPills() {
+  const counts = Object.fromEntries(CAT_KEYS.map(k => [k, 0]));
+  pins.forEach(p => counts[p.category]++);
+  $("#pills").innerHTML = CATEGORIES.map(c =>
+    `<button class="pill ${activeCats.has(c.key) ? "" : "off"}" data-cat="${c.key}"><span class="dot" style="background:${catColor(c.key)}"></span>${c.label}<span class="n">${counts[c.key]}</span></button>`).join("");
+}
+function cardHtml(p) {
+  const d = myPos && p.lat != null ? fmtKm(distKm(myPos, p)) : "";
+  return `<div class="card ${p.id === selectedId ? "sel" : ""}" data-id="${esc(p.id)}">
+    <div class="top"><div><div class="name">${esc(p.name)}</div>
+      <div class="meta">${[d, p.address || p.city, p.lat == null ? "⚠︎ ohne Koordinaten" : ""].filter(Boolean).map(esc).join(" · ")}</div></div>
+      <span class="tag" style="background:${catColor(p.category)}">${esc(catLabel(p.category))}</span></div>
+    ${p.note ? `<div class="meta" style="color:var(--fg)">${esc(p.note)}</div>` : ""}
+    <div class="actions">
+      ${p.url ? `<a class="btn sm" href="${esc(p.url)}" target="_blank" rel="noopener">▶︎ Reel</a>` : ""}
+      <a class="btn sm" href="${esc(p.website || googleSearch(p))}" target="_blank" rel="noopener">${p.website ? "🌐 Webseite" : "🔎 Google"}</a>
+      <a class="btn sm" href="${esc(routeUrl(p))}" target="_blank" rel="noopener">🧭 Route</a>
+    </div></div>`;
+}
+function render() {
+  renderPills();
+  const vis = visiblePins();
+  renderMarkers(vis);
+  $("#count").textContent = `${pins.length} ${pins.length === 1 ? "Pin" : "Pins"} · auf diesem Gerät gespeichert`;
+  if (!vis.length) {
+    $("#list").innerHTML = `<div class="empty">${pins.length ? "Nichts gefunden – passe Suche oder Filter an." : "Noch keine Pins. Füge oben einen Reel-Link ein."}</div>`;
+    return;
+  }
+  if (sortByDistance && myPos) {
+    const sorted = [...vis].sort((a, b) => (a.lat == null) - (b.lat == null) || (a.lat == null ? 0 : distKm(myPos, a) - distKm(myPos, b)));
+    $("#list").innerHTML = `<div class="group"><h3>Nach Distanz <button class="btn sm ghost" id="unsort">Nach Stadt</button></h3>${sorted.map(cardHtml).join("")}</div>`;
+    return;
+  }
+  const groups = {};
+  for (const p of vis) (groups[p.city || "Ohne Stadt"] ||= []).push(p);
+  $("#list").innerHTML = Object.keys(groups).sort((a, b) => a === "Ohne Stadt" ? 1 : b === "Ohne Stadt" ? -1 : a.localeCompare(b))
+    .map(g => `<div class="group"><h3>${esc(g)} · ${groups[g].length}</h3>${groups[g].sort((a, b) => b.createdAt - a.createdAt).map(cardHtml).join("")}</div>`).join("");
+}
+
+/* ---------- Hinzufügen ---------- */
+let candidates = [];
+function openAdd(prefill = {}) {
+  $("#addUrl").value = prefill.url || "";
+  $("#addCaption").value = prefill.caption || "";
+  $("#addCity").value = localStorage.getItem(CITY_KEY) || "";
+  $("#manualQ").value = ""; $("#manualResults").innerHTML = "";
+  candidates = []; renderCandidates(); updateOpenLink();
+  $("#addOverlay").classList.add("open");
+  setTimeout(() => (prefill.url ? $("#addCaption") : $("#addUrl")).focus(), 50);
+}
+function closeOverlays() { document.querySelectorAll(".overlay").forEach(o => o.classList.remove("open")); }
+function updateOpenLink() {
+  const u = sanitiseReelUrl($("#addUrl").value);
+  const a = $("#openReelBtn");
+  if (u) { a.href = u; a.style.pointerEvents = ""; a.style.opacity = ""; } else { a.removeAttribute("href"); a.style.pointerEvents = "none"; a.style.opacity = ".4"; }
+}
+function renderCandidates() {
+  const w = $("#candWrap");
+  if (!candidates.length) { w.innerHTML = ""; $("#saveBtn").disabled = true; return; }
+  w.innerHTML = `<div class="hint" style="margin-bottom:6px">Gefundene Orte – abhaken, was auf die Karte soll:</div>` +
+    candidates.map((c, i) => `<div class="cand">
+      <input type="checkbox" data-i="${i}" ${c.checked ? "checked" : ""} ${c.lat == null ? "disabled" : ""}>
+      <div class="body">
+        <div style="font-weight:600">${esc(c.name)}</div>
+        <div class="addr">${c.lat == null ? "Nicht gefunden – unten manuell suchen" : esc([c.address, c.country].filter(Boolean).join(", "))}</div>
+        ${c.query ? `<div class="q">aus: «${esc(c.query)}»</div>` : ""}
+        ${c.lat != null ? `<select data-ci="${i}">${CATEGORIES.map(k => `<option value="${k.key}" ${k.key === c.category ? "selected" : ""}>${k.label}</option>`).join("")}</select>` : ""}
+      </div></div>`).join("");
+  $("#saveBtn").disabled = !candidates.some(c => c.checked && c.lat != null);
+}
+async function detect() {
+  const text = $("#addCaption").value;
+  const city = $("#addCity").value.trim();
+  localStorage.setItem(CITY_KEY, city);
+  if (!$("#addUrl").value.trim()) { const u = findUrlInText(text); if (u) { $("#addUrl").value = u; updateOpenLink(); } }
+  const qs = extractQueries(text);
+  if (!qs.length) { toast("Kein Ort erkannt – tippe den Namen ein oder suche unten manuell."); return; }
+  const btn = $("#detectBtn"); btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> Suche Orte …';
+  candidates = [];
+  for (const q of qs) {
+    const full = city && !q.toLowerCase().includes(city.toLowerCase()) ? `${q}, ${city}` : q;
+    let res = await geocode(full, 3);
+    if (!res.length && full !== q) res = await geocode(q, 3);
+    if (res.length) {
+      const r = res[0];
+      if (!candidates.some(c => c.lat != null && Math.abs(c.lat - r.lat) < 1e-4 && Math.abs(c.lng - r.lng) < 1e-4))
+        candidates.push({ ...r, query: q, checked: true });
+    } else candidates.push({ name: q, query: q, lat: null, lng: null, checked: false });
+    renderCandidates();
+    await sleep(250);
+  }
+  btn.disabled = false; btn.textContent = "Orte erkennen";
+  const ok = candidates.filter(c => c.lat != null).length;
+  toast(ok ? `${ok} Ort${ok === 1 ? "" : "e"} gefunden.` : "Nichts gefunden – versuch es unten manuell.");
+}
+async function manualSearch() {
+  const q = $("#manualQ").value.trim(); if (!q) return;
+  const city = $("#addCity").value.trim();
+  $("#manualResults").innerHTML = '<div class="hint" style="padding:8px 4px"><span class="spinner"></span> Suche …</div>';
+  let res = await geocode(city && !q.toLowerCase().includes(city.toLowerCase()) ? `${q}, ${city}` : q, 5);
+  if (!res.length && city) res = await geocode(q, 5);
+  manualSearch.res = res;
+  $("#manualResults").innerHTML = res.length
+    ? res.map((r, i) => `<button data-ri="${i}"><strong>${esc(r.name)}</strong><br><span class="hint">${esc([r.address, r.country].filter(Boolean).join(", "))}</span></button>`).join("")
+    : '<div class="hint" style="padding:8px 4px">Keine Treffer. Versuch es mit Strasse oder Stadtteil.</div>';
+}
+function saveCandidates() {
+  const url = sanitiseReelUrl($("#addUrl").value) || $("#addUrl").value.trim();
+  const caption = $("#addCaption").value.trim();
+  const chosen = candidates.filter(c => c.checked && c.lat != null);
+  let added = 0; const fresh = [];
+  for (const c of chosen) {
+    const dup = pins.find(p => p.lat != null && Math.abs(p.lat - c.lat) < 1e-4 && Math.abs(p.lng - c.lng) < 1e-4);
+    if (dup) { if (url && !dup.url) dup.url = url; continue; }
+    const pin = normalisePin({ ...c, id: newId(), url, caption, createdAt: Date.now() });
+    pins.push(pin); fresh.push(pin); added++;
+  }
+  save(); closeOverlays(); render();
+  if (fresh.length) map.setView([fresh[0].lat, fresh[0].lng], Math.max(map.getZoom(), 14));
+  toast(added ? `${added} Pin${added === 1 ? "" : "s"} gesetzt.` : "Diese Orte waren schon auf der Karte.");
+  (async () => { for (const p of fresh) { await enrich(p); await sleep(400); } })();
+}
+
+/* ---------- Details / Bearbeiten ---------- */
+function openDetail(id) {
+  const p = pins.find(x => x.id === id); if (!p) return;
+  selectedId = id; map.closePopup();
+  $("#detailSheet").innerHTML = `
+    <button class="btn sm ghost close" data-close>✕</button>
+    <h2>${esc(p.name)}</h2>
+    <p class="hint">${esc([p.address, p.country].filter(Boolean).join(", "))}${p.hours ? "<br>🕒 " + esc(p.hours) : ""}</p>
+    <div class="row" style="flex-wrap:wrap;margin:10px 0">
+      ${p.url ? `<a class="btn sm" href="${esc(p.url)}" target="_blank" rel="noopener">▶︎ Reel</a>` : ""}
+      <a class="btn sm" href="${esc(p.website || googleSearch(p))}" target="_blank" rel="noopener">${p.website ? "🌐 Webseite" : "🔎 Google"}</a>
+      <a class="btn sm" href="${esc(routeUrl(p))}" target="_blank" rel="noopener">🧭 Route</a>
+      ${p.lat != null ? `<button class="btn sm" id="dShow">Auf Karte</button>` : ""}
+    </div>
+    <label class="lbl">Name</label><input type="text" id="dName" value="${esc(p.name)}">
+    <label class="lbl">Kategorie</label><select id="dCat">${CATEGORIES.map(k => `<option value="${k.key}" ${k.key === p.category ? "selected" : ""}>${k.label}</option>`).join("")}</select>
+    <label class="lbl">Webseite</label><input type="url" id="dWeb" value="${esc(p.website)}" placeholder="https://…">
+    <label class="lbl">Reel-Link</label><input type="url" id="dUrl" value="${esc(p.url)}">
+    <label class="lbl">Notiz</label><textarea id="dNote" style="min-height:70px" placeholder="z.B. Flat White probieren">${esc(p.note)}</textarea>
+    ${p.caption ? `<details style="margin-top:10px"><summary class="hint">Caption anzeigen</summary><p style="white-space:pre-wrap;font-size:13px">${esc(p.caption)}</p></details>` : ""}
+    <div class="row" style="margin-top:16px;justify-content:space-between">
+      <button class="btn danger ghost" id="dDel">Löschen</button>
+      <button class="btn primary" id="dSave">Speichern</button>
+    </div>`;
+  $("#detailOverlay").classList.add("open");
+  $("#dSave").onclick = () => {
+    p.name = $("#dName").value.trim() || p.name;
+    p.category = $("#dCat").value;
+    const w = $("#dWeb").value.trim(); p.website = w && !/^https?:/.test(w) ? "https://" + w : w;
+    p.url = sanitiseReelUrl($("#dUrl").value) || $("#dUrl").value.trim();
+    p.note = $("#dNote").value.trim();
+    save(); closeOverlays(); render(); toast("Gespeichert.");
+  };
+  $("#dDel").onclick = () => {
+    if (!confirm(`«${p.name}» wirklich löschen?`)) return;
+    pins = pins.filter(x => x.id !== p.id); save(); closeOverlays(); render(); toast("Pin gelöscht.");
+  };
+  const show = $("#dShow");
+  if (show) show.onclick = () => { closeOverlays(); setView("map"); map.setView([p.lat, p.lng], 16); markers.get(p.id)?.openPopup(); };
+}
+window.openDetail = openDetail;
+
+/* ---------- Backup ---------- */
+function exportBackup() {
+  const blob = new Blob([JSON.stringify(pins, null, 2)], { type: "application/json" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = `reel-karte-backup-${new Date().toISOString().slice(0, 10)}.json`;
+  a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+}
+async function importBackup(file) {
+  try {
+    const data = JSON.parse(await file.text());
+    if (!Array.isArray(data)) throw 0;
+    const incoming = data.map(normalisePin).filter(Boolean);
+    const ids = new Set(pins.map(p => p.id));
+    let added = 0;
+    for (const p of incoming) if (!ids.has(p.id)) { pins.push(p); added++; }
+    save(); render(); fitAll();
+    toast(`Backup geladen – ${added} Pins hinzugefügt.`);
+  } catch { toast("Das war leider keine gültige Backup-Datei."); }
+}
+
+/* ---------- Ansicht ---------- */
+function setView(v) {
+  $("#main").className = v === "list" ? "show-list" : "show-map";
+  document.querySelectorAll("#viewToggle button").forEach(b => b.classList.toggle("on", b.dataset.v === v));
+  if (v === "map") setTimeout(() => map.invalidateSize(), 50);
+}
+
+/* ---------- Events ---------- */
+function bind() {
+  document.querySelectorAll("#viewToggle button").forEach(b => b.onclick = () => setView(b.dataset.v));
+  $("#addBtn").onclick = () => { const v = $("#quickUrl").value.trim(); $("#quickUrl").value = ""; openAdd({ url: sanitiseReelUrl(v) || v }); };
+  $("#addBtnMap").onclick = () => openAdd();
+  $("#quickUrl").addEventListener("input", e => {
+    const u = sanitiseReelUrl(e.target.value); if (u) { e.target.value = ""; openAdd({ url: u }); }
+  });
+  $("#quickUrl").addEventListener("keydown", e => { if (e.key === "Enter") $("#addBtn").click(); });
+  $("#search").addEventListener("input", e => { searchTerm = e.target.value; render(); });
+  $("#pills").addEventListener("click", e => {
+    const b = e.target.closest("[data-cat]"); if (!b) return;
+    const k = b.dataset.cat; activeCats.has(k) ? activeCats.delete(k) : activeCats.add(k); render();
+  });
+  $("#list").addEventListener("click", e => {
+    if (e.target.closest("a")) return;
+    if (e.target.id === "unsort") { sortByDistance = false; render(); return; }
+    const c = e.target.closest(".card"); if (c) openDetail(c.dataset.id);
+  });
+  $("#nearBtnList").onclick = () => { locate(); };
+  $("#nearBtnMap").onclick = () => { locate(); };
+  $("#exportBtn").onclick = exportBackup;
+  $("#importBtn").onclick = () => $("#importFile").click();
+  $("#importFile").onchange = e => { const f = e.target.files[0]; if (f) importBackup(f); e.target.value = ""; };
+  $("#addUrl").addEventListener("input", updateOpenLink);
+  $("#detectBtn").onclick = detect;
+  $("#manualBtn").onclick = manualSearch;
+  $("#manualQ").addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); manualSearch(); } });
+  $("#manualResults").addEventListener("click", e => {
+    const b = e.target.closest("[data-ri]"); if (!b) return;
+    const r = manualSearch.res[Number(b.dataset.ri)];
+    candidates = candidates.filter(c => c.lat != null);
+    candidates.push({ ...r, checked: true });
+    $("#manualResults").innerHTML = ""; $("#manualQ").value = "";
+    renderCandidates();
+  });
+  $("#candWrap").addEventListener("change", e => {
+    if (e.target.dataset.i != null) candidates[+e.target.dataset.i].checked = e.target.checked;
+    if (e.target.dataset.ci != null) candidates[+e.target.dataset.ci].category = e.target.value;
+    renderCandidates();
+  });
+  $("#saveBtn").onclick = saveCandidates;
+  document.addEventListener("click", e => {
+    if (e.target.closest("[data-close]")) closeOverlays();
+    else if (e.target.classList.contains("overlay")) closeOverlays();
+  });
+  document.addEventListener("keydown", e => { if (e.key === "Escape") closeOverlays(); });
+}
+
+/* ---------- Start ---------- */
+load();
+initMap();
+bind();
+render();
+fitAll();
+// Teilen per Link: ?add=<reel-link>&text=<caption>
+(() => {
+  const sp = new URLSearchParams(location.search);
+  const raw = sp.get("add") || sp.get("url") || sp.get("text") || "";
+  if (!raw) return;
+  const url = sanitiseReelUrl(raw) || findUrlInText(raw) || "";
+  const caption = sp.get("caption") || (sp.get("text") && !sanitiseReelUrl(sp.get("text")) ? sp.get("text") : "");
+  history.replaceState(null, "", location.pathname);
+  openAdd({ url, caption });
+})();
+</script>
+</body>
+</html>
