@@ -12,6 +12,9 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<link rel="stylesheet" href="https://unpkg.com/maplibre-gl@5.24.1/dist/maplibre-gl.css">
+<script src="https://unpkg.com/maplibre-gl@5.24.1/dist/maplibre-gl.js"></script>
+<script src="https://unpkg.com/@maplibre/maplibre-gl-leaflet@0.1.4/leaflet-maplibre-gl.js"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,500;12..96,700;12..96,800&display=swap" rel="stylesheet">
@@ -198,6 +201,9 @@
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
       <input type="search" id="search" placeholder="Orte durchsuchen" aria-label="Orte durchsuchen">
     </label>
+    <button class="roundbtn" id="styleBtn" title="Kartenstil wechseln" aria-label="Kartenstil wechseln">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><path d="m12 3 9 5-9 5-9-5z"/><path d="m3 13 9 5 9-5"/></svg>
+    </button>
     <button class="roundbtn" id="nearBtn" title="In meiner Nähe" aria-label="In meiner Nähe">
       <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M21 3 3 10.5l7.2 2.3L12.5 20z"/></svg>
     </button>
@@ -615,12 +621,40 @@ function extractQueries(text) {
 /* ---------- Karte ---------- */
 let map, markerLayer, meMarker, myPos = null;
 const markers = new Map();
+/* Kartenstil: OpenFreeMap (gratis, ohne Schlüssel), Ersatz: OpenStreetMap */
+const STYLE_KEY = "reel-karte:mapstyle:v1";
+const MAP_STYLES = [
+  { key: "positron", label: "Hell & ruhig" },
+  { key: "bright", label: "Farbig" },
+  { key: "liberty", label: "Klassisch" },
+];
+let baseLayer = null, currentStyle = "positron";
+function webglOk() {
+  try { const c = document.createElement("canvas"); return !!(c.getContext("webgl2") || c.getContext("webgl")); } catch { return false; }
+}
+function setBaseMap(key) {
+  if (baseLayer) { map.removeLayer(baseLayer); baseLayer = null; }
+  currentStyle = MAP_STYLES.some(s => s.key === key) ? key : "positron";
+  const attribution = '<a href="https://openfreemap.org" target="_blank">OpenFreeMap</a> &copy; <a href="https://www.openmaptiles.org/" target="_blank">OpenMapTiles</a> Daten &copy; <a href="https://www.openstreetmap.org/copyright" target="_blank">OpenStreetMap</a>';
+  if (typeof L.maplibreGL === "function" && webglOk()) {
+    try {
+      baseLayer = L.maplibreGL({ style: `https://tiles.openfreemap.org/styles/${currentStyle}`, attribution }).addTo(map);
+      try { localStorage.setItem(STYLE_KEY, currentStyle); } catch { }
+      return;
+    } catch (e) { console.warn("MapLibre fehlgeschlagen", e); }
+  }
+  baseLayer = L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
+    maxZoom: 19, attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+  }).addTo(map);
+}
+function cycleBaseMap() {
+  const i = MAP_STYLES.findIndex(s => s.key === currentStyle);
+  const next = MAP_STYLES[(i + 1) % MAP_STYLES.length];
+  setBaseMap(next.key); toast("Kartenstil: " + next.label);
+}
 function initMap() {
   map = L.map("map", { zoomControl: false, attributionControl: true }).setView([-25, 134], 4);
-  L.tileLayer("https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png", {
-    maxZoom: 20, subdomains: "abcd",
-    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>',
-  }).addTo(map);
+  setBaseMap(localStorage.getItem(STYLE_KEY) || "positron");
   if (matchMedia("(min-width:900px)").matches) L.control.zoom({ position: "bottomright" }).addTo(map);
   map.on("click", () => Drawer.set("peek"));
   markerLayer = L.layerGroup().addTo(map);
@@ -1015,6 +1049,7 @@ function bind() {
     } else openDetail(c.dataset.id);
   });
   $("#nearBtn").onclick = () => { locate(); };
+  $("#styleBtn").onclick = cycleBaseMap;
   $("#exportBtn").onclick = exportBackup;
   $("#syncBtn").onclick = () => Sync.openSettings();
   $("#importBtn").onclick = () => $("#importFile").click();
