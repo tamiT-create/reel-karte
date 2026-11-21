@@ -97,13 +97,18 @@
   .grp-tools{display:flex;justify-content:flex-end;padding:0 10px}
   .group{border-top:1px solid var(--line)}
   .group:first-child{border-top:0}
-  .grp-head{position:sticky;top:0;z-index:2;display:flex;align-items:center;gap:10px;width:100%;border:0;background:var(--surface);
-    padding:14px 18px 10px;cursor:pointer;text-align:left}
-  .grp-head .grp-name{flex:1;font-size:19px;font-weight:700;letter-spacing:-.01em}
+  .grp-head{position:sticky;top:0;z-index:2;display:flex;align-items:center;gap:4px;width:100%;background:var(--surface);
+    padding:8px 18px 4px 6px}
+  .grp-toggle{width:40px;height:40px;border:0;background:none;border-radius:50%;cursor:pointer;display:grid;place-items:center}
+  .grp-toggle:hover{background:var(--wash)}
+  .grp-focus{flex:1;display:flex;align-items:center;gap:8px;border:0;background:none;cursor:pointer;text-align:left;padding:6px 8px;border-radius:12px;min-width:0}
+  .grp-focus:hover{background:var(--wash)}
+  .grp-focus .grp-pin{color:var(--muted);flex:none}
+  .grp-head .grp-name{font-size:19px;font-weight:700;letter-spacing:-.01em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .grp-head .grp-n{font-size:13px;color:var(--muted);font-variant-numeric:tabular-nums}
   .grp-head .chev{display:inline-block;transition:transform .2s;color:var(--muted);font-size:14px}
   .group.closed .chev{transform:rotate(-90deg)}
-  .group.closed .grp-head{padding-bottom:14px}
+  .group.closed .grp-head{padding-bottom:8px}
   .dist-head{display:flex;align-items:center;justify-content:space-between;padding:14px 18px 6px}
   .dist-head strong{font-size:19px;font-weight:700}
 
@@ -800,12 +805,27 @@ function render() {
     + names.map(g => {
       const open = searching || !collapsedCities.has(g);
       return `<div class="group ${open ? "" : "closed"}">
-        <button class="grp-head" data-city="${esc(g)}" aria-expanded="${open}">
-          <span class="chev">▾</span><span class="grp-name">${esc(g)}</span><span class="grp-n">${groups[g].length}</span>
-        </button>
+        <div class="grp-head">
+          <button class="grp-toggle" data-city="${esc(g)}" aria-expanded="${open}" aria-label="${esc(g)} ${open ? "zuklappen" : "aufklappen"}"><span class="chev">▾</span></button>
+          <button class="grp-focus" data-focus="${esc(g)}" title="Karte auf ${esc(g)} zentrieren">
+            <span class="grp-name">${esc(g)}</span>
+            <svg class="grp-pin" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2a7 7 0 0 0-7 7c0 5 7 13 7 13s7-8 7-13a7 7 0 0 0-7-7zm0 9.5A2.5 2.5 0 1 1 12 6.5a2.5 2.5 0 0 1 0 5z"/></svg>
+          </button>
+          <span class="grp-n">${groups[g].length}</span>
+        </div>
         ${open ? groups[g].sort((a, b) => favFirst(a, b) || b.createdAt - a.createdAt).map(cardHtml).join("") : ""}
       </div>`;
     }).join("");
+}
+
+function focusCity(city) {
+  const pts = visiblePins().filter(p => (p.city || "Ohne Stadt") === city && p.lat != null).map(p => [p.lat, p.lng]);
+  if (!pts.length) { toast("Hier gibt es noch keine Orte mit Position."); return; }
+  map.closePopup();
+  const desktop = matchMedia("(min-width:900px)").matches;
+  if (!desktop) Drawer.set("peek");
+  const opts = { maxZoom: 15, paddingTopLeft: L.point(desktop ? 440 : 30, desktop ? 90 : 150), paddingBottomRight: L.point(40, desktop ? 40 : 200) };
+  setTimeout(() => pts.length === 1 ? map.setView(pts[0], 15) : map.flyToBounds(pts, { ...opts, duration: 0.8 }), desktop ? 0 : 280);
 }
 
 /* ---------- Hinzufügen ---------- */
@@ -1060,12 +1080,14 @@ function bind() {
     if (act) { toggleFlag(act.closest(".card").dataset.id, act.dataset.act); return; }
     if (e.target.id === "unsort") { sortByDistance = false; render(); return; }
     if (e.target.id === "toggleAllCities") {
-      const names = [...document.querySelectorAll(".grp-head")].map(b => b.dataset.city);
+      const names = [...document.querySelectorAll(".grp-toggle")].map(b => b.dataset.city);
       const allClosed = names.every(g => collapsedCities.has(g));
       names.forEach(g => allClosed ? collapsedCities.delete(g) : collapsedCities.add(g));
       saveCollapsed(); render(); return;
     }
-    const gh = e.target.closest(".grp-head");
+    const gf = e.target.closest(".grp-focus");
+    if (gf) { focusCity(gf.dataset.focus); return; }
+    const gh = e.target.closest(".grp-toggle");
     if (gh) { const g = gh.dataset.city; collapsedCities.has(g) ? collapsedCities.delete(g) : collapsedCities.add(g); saveCollapsed(); render(); return; }
     const c = e.target.closest(".card"); if (!c) return;
     const p = pins.find(x => x.id === c.dataset.id);
