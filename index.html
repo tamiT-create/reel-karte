@@ -639,6 +639,11 @@ function setBaseMap(key) {
   if (typeof L.maplibreGL === "function" && webglOk()) {
     try {
       baseLayer = L.maplibreGL({ style: `https://tiles.openfreemap.org/styles/${currentStyle}`, attribution }).addTo(map);
+      if (currentStyle === "positron") {
+        const gl = baseLayer.getMaplibreMap();
+        const tint = () => tintPositron(gl);
+        gl.on("style.load", tint); if (gl.isStyleLoaded()) tint();
+      }
       try { localStorage.setItem(STYLE_KEY, currentStyle); } catch { }
       return;
     } catch (e) { console.warn("MapLibre fehlgeschlagen", e); }
@@ -646,6 +651,28 @@ function setBaseMap(key) {
   baseLayer = L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
     maxZoom: 19, attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
   }).addTo(map);
+}
+/* Hellen Stil leicht einfärben: Wasser blau, Grünflächen grün */
+function tintPositron(gl) {
+  const st = gl.getStyle(); if (!st) return;
+  const src = Object.keys(st.sources).find(k => st.sources[k].type === "vector") || "openmaptiles";
+  for (const l of st.layers) {
+    try {
+      if (l.type === "fill" && /water/.test(l.id)) gl.setPaintProperty(l.id, "fill-color", "#B5DAF0");
+      else if (l.type === "line" && /waterway/.test(l.id)) gl.setPaintProperty(l.id, "line-color", "#9CCBE8");
+      else if (l.type === "background") gl.setPaintProperty(l.id, "background-color", "#F3F5F2");
+    } catch { }
+  }
+  const before = st.layers.some(l => l.id === "water") ? "water" : undefined;
+  const green = { "fill-color": "#D2EBC6", "fill-opacity": 1 };
+  const add = def => { try { if (!gl.getLayer(def.id)) gl.addLayer(def, before); } catch (e) { console.warn(e); } };
+  add({ id: "rk-landcover", type: "fill", source: src, "source-layer": "landcover",
+    filter: ["in", ["get", "class"], ["literal", ["grass", "wood", "wetland"]]],
+    paint: { "fill-color": ["match", ["get", "class"], "wood", "#C3E2B6", "#D2EBC6"] } });
+  add({ id: "rk-park", type: "fill", source: src, "source-layer": "park", paint: green });
+  add({ id: "rk-landuse", type: "fill", source: src, "source-layer": "landuse",
+    filter: ["in", ["get", "class"], ["literal", ["park", "cemetery", "pitch", "garden", "playground", "stadium", "grass", "recreation_ground"]]],
+    paint: green });
 }
 function cycleBaseMap() {
   const i = MAP_STYLES.findIndex(s => s.key === currentStyle);
