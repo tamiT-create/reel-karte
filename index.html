@@ -8,164 +8,223 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="Reel-Karte">
-<meta name="theme-color" content="#ffffff">
+<meta name="theme-color" content="#EEF3F5">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,500;12..96,700;12..96,800&display=swap" rel="stylesheet">
 <style>
   :root{
-    --bg:#f7f6f3; --card:#fff; --fg:#1c1b19; --muted:#74706a; --border:#e6e3dd;
-    --primary:#1c1b19; --primary-fg:#fff; --accent:#f0eee9; --radius:14px;
-    --kaffee:#a0673a; --abendessen:#d9480f; --bar:#7048e8; --aktivitaeten:#2b8a3e; --sehenswuerdigkeiten:#1971c2;
+    --ink:#13314A; --ink-2:#2B4A63; --muted:#5E7282; --line:#DCE4E8; --wash:#EEF3F5; --surface:#fff;
+    --kaffee:#8B5A3C; --abendessen:#E24A3B; --bar:#7A5BC7; --aktivitaeten:#128C95; --sehenswuerdigkeiten:#D9A400;
+    --fav:#13314A; --done:#128C95;
+    --font:"Bricolage Grotesque",-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+    --shadow:0 6px 24px rgba(19,49,74,.18),0 1px 3px rgba(19,49,74,.12);
+    --sat:env(safe-area-inset-top); --sab:env(safe-area-inset-bottom);
   }
-  *{box-sizing:border-box}
-  html,body{margin:0;height:100%;background:var(--bg);color:var(--fg);
-    font:15px/1.4 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html,body{margin:0;height:100%;overflow:hidden;background:var(--wash);color:var(--ink);
+    font:16px/1.45 var(--font);font-optical-sizing:auto}
   button,input,select,textarea{font:inherit;color:inherit}
-  .app{display:flex;flex-direction:column;height:100%}
-  header{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 16px;
-    background:var(--card);border-bottom:1px solid var(--border);padding-top:max(12px,env(safe-area-inset-top))}
-  header h1{margin:0;font-size:18px;letter-spacing:-.01em}
-  header p{margin:0;font-size:12px;color:var(--muted)}
-  .toggle{display:flex;border:1px solid var(--border);border-radius:999px;padding:3px;background:var(--bg)}
-  .toggle button{border:0;background:none;padding:6px 12px;border-radius:999px;font-size:13px;color:var(--muted);cursor:pointer}
-  .toggle button.on{background:var(--primary);color:var(--primary-fg)}
-  main{flex:1;min-height:0;display:grid;grid-template-columns:400px 1fr}
-  aside{overflow-y:auto;border-right:1px solid var(--border);padding:16px;display:flex;flex-direction:column;gap:12px}
-  #map{height:100%;width:100%}
-  .mapwrap{position:relative;min-height:0}
-  .fab{position:absolute;z-index:500;right:12px;bottom:calc(16px + env(safe-area-inset-bottom));display:flex;flex-direction:column;gap:8px}
-  .fab button{box-shadow:0 2px 10px rgba(0,0,0,.18)}
-  @media (max-width:767px){
-    main{grid-template-columns:1fr}
-    main.show-map aside{display:none}
-    main.show-list .mapwrap{display:none}
+  :focus-visible{outline:2px solid var(--ink);outline-offset:2px}
+  #map{position:fixed;inset:0;z-index:0;background:#e9eef0}
+
+  /* ---- Schwebende Leiste oben ---- */
+  .topbar{position:fixed;z-index:600;left:0;right:0;top:0;padding:calc(10px + var(--sat)) 12px 0;pointer-events:none}
+  .topbar > *{pointer-events:auto}
+  .searchrow{display:flex;gap:8px}
+  .search{flex:1;display:flex;align-items:center;gap:8px;background:var(--surface);border-radius:999px;box-shadow:var(--shadow);padding:0 6px 0 16px;height:48px}
+  .search svg{flex:none;opacity:.55}
+  .search input[type=search]{flex:1;border:0;outline:0;background:none;height:100%;font-size:16px;min-width:0;padding:0;border-radius:0;-webkit-appearance:none;appearance:none}
+  .search:focus-within{box-shadow:var(--shadow),0 0 0 2px var(--ink)}
+  .search input::placeholder{color:var(--muted)}
+  .roundbtn{width:48px;height:48px;flex:none;border-radius:50%;border:0;background:var(--surface);box-shadow:var(--shadow);
+    display:grid;place-items:center;cursor:pointer;font-size:20px}
+  .roundbtn.ink{background:var(--ink);color:#fff}
+  .roundbtn.active{background:var(--ink);color:#fff}
+  .chips{display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;padding:10px 2px 6px;margin:0 -12px;padding-left:12px;padding-right:12px}
+  .chips::-webkit-scrollbar{display:none}
+  .pill{flex:none;display:inline-flex;align-items:center;gap:6px;height:36px;padding:0 13px 0 10px;border-radius:999px;border:0;cursor:pointer;
+    background:var(--surface);box-shadow:0 2px 8px rgba(19,49,74,.14);font-size:14px;font-weight:500;white-space:nowrap}
+  .pill .ico{width:24px;height:24px;border-radius:50%;display:grid;place-items:center;font-size:13px;background:var(--c,#ccc)}
+  .pill .n{font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums}
+  .pill.off{background:rgba(255,255,255,.72);color:var(--muted)}
+  .pill.off .ico{filter:grayscale(1);opacity:.5}
+  .pill.flag.on{background:var(--ink);color:#fff}
+  .pill.flag.on .n{color:#b9c8d3}
+  .pill-sep{flex:none;width:1px;margin:6px 2px;background:rgba(19,49,74,.2)}
+
+  /* ---- Bottom-Sheet (mobil) / Seitenpanel (Desktop) ---- */
+  .drawer{position:fixed;z-index:700;left:0;right:0;bottom:0;height:172px;background:var(--surface);
+    border-radius:22px 22px 0 0;box-shadow:0 -8px 30px rgba(19,49,74,.16);display:flex;flex-direction:column;
+    transition:height .28s cubic-bezier(.2,.8,.2,1);touch-action:none}
+  .drawer.dragging{transition:none}
+  .drawer-head{padding:8px 18px 10px;cursor:grab;flex:none;user-select:none}
+  .handle{width:40px;height:5px;border-radius:3px;background:var(--line);margin:0 auto 10px}
+  .drawer-title{display:flex;align-items:baseline;gap:10px}
+  .drawer-title h1{margin:0;font-size:26px;line-height:1.1;font-weight:800;letter-spacing:-.02em}
+  .drawer-title .sub{font-size:13px;color:var(--muted)}
+  .addrow{display:flex;gap:8px;margin-top:12px}
+  .addrow input{flex:1;height:44px;border:1.5px solid var(--line);border-radius:14px;padding:0 14px;background:var(--wash);outline:0;min-width:0}
+  .addrow input:focus{border-color:var(--ink);background:#fff}
+  .drawer-body{flex:1;overflow-y:auto;overscroll-behavior:contain;touch-action:pan-y;padding:0 0 calc(16px + var(--sab))}
+  .drawer-foot{display:flex;flex-wrap:wrap;gap:4px;align-items:center;padding:14px 12px 0;margin-top:8px;border-top:1px solid var(--line)}
+  .drawer-foot .count{margin-left:auto;font-size:12px;color:var(--muted);padding-right:6px}
+
+  @media (min-width:900px){
+    .drawer{left:16px;top:16px;bottom:16px;right:auto;width:400px;height:auto !important;border-radius:22px;box-shadow:var(--shadow);transition:none}
+    .handle{display:none}
+    .drawer-head{cursor:default;padding-top:20px}
+    .topbar{left:432px;right:16px;padding-top:16px}
+    .searchrow{max-width:560px}
   }
-  @media (min-width:768px){ .toggle{display:none} }
-  .btn{border:1px solid var(--border);background:var(--card);border-radius:12px;padding:9px 14px;cursor:pointer;
-    display:inline-flex;align-items:center;gap:6px;justify-content:center;text-decoration:none;color:var(--fg);font-size:14px}
-  .btn.primary{background:var(--primary);color:var(--primary-fg);border-color:var(--primary)}
-  .btn.ghost{border-color:transparent;background:transparent}
-  .btn.sm{padding:6px 10px;font-size:13px;border-radius:10px}
-  .btn.danger{color:#c92a2a}
-  .btn:disabled{opacity:.5;cursor:default}
-  input[type=text],input[type=url],input[type=search],textarea,select{width:100%;border:1px solid var(--border);
-    background:var(--card);border-radius:12px;padding:9px 12px;outline:none}
-  input:focus,textarea:focus,select:focus{border-color:#999}
+
+  /* ---- Buttons ---- */
+  .btn{border:0;background:var(--wash);border-radius:12px;padding:10px 16px;cursor:pointer;display:inline-flex;align-items:center;gap:6px;
+    justify-content:center;text-decoration:none;color:var(--ink);font-size:15px;font-weight:500}
+  .btn.primary{background:var(--ink);color:#fff}
+  .btn.ghost{background:transparent}
+  .btn.sm{padding:7px 11px;font-size:13px;border-radius:10px}
+  .btn.danger{color:#C0392B}
+  .btn:disabled{opacity:.45;cursor:default}
+
+  /* ---- Liste ---- */
+  .grp-tools{display:flex;justify-content:flex-end;padding:0 10px}
+  .group{border-top:1px solid var(--line)}
+  .group:first-child{border-top:0}
+  .grp-head{position:sticky;top:0;z-index:2;display:flex;align-items:center;gap:10px;width:100%;border:0;background:var(--surface);
+    padding:14px 18px 10px;cursor:pointer;text-align:left}
+  .grp-head .grp-name{flex:1;font-size:19px;font-weight:700;letter-spacing:-.01em}
+  .grp-head .grp-n{font-size:13px;color:var(--muted);font-variant-numeric:tabular-nums}
+  .grp-head .chev{display:inline-block;transition:transform .2s;color:var(--muted);font-size:14px}
+  .group.closed .chev{transform:rotate(-90deg)}
+  .group.closed .grp-head{padding-bottom:14px}
+  .dist-head{display:flex;align-items:center;justify-content:space-between;padding:14px 18px 6px}
+  .dist-head strong{font-size:19px;font-weight:700}
+
+  .card{display:grid;grid-template-columns:40px 1fr auto;gap:4px 12px;align-items:center;padding:10px 14px 10px 18px;cursor:pointer;position:relative}
+  .card + .card::before{content:"";position:absolute;left:70px;right:0;top:0;height:1px;background:var(--line)}
+  .card:hover,.card.sel{background:#F6F9FA}
+  .card .cat{width:40px;height:40px;border-radius:50%;display:grid;place-items:center;font-size:19px;background:var(--c)}
+  .card .txt{min-width:0}
+  .card .name{font-weight:700;font-size:16px;line-height:1.25;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .card .meta{font-size:13px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:flex;gap:8px}
+  .card .meta .km{color:var(--ink);font-weight:600;font-variant-numeric:tabular-nums}
+  .card .meta .warn{color:#B7791F}
+  .card .note{grid-column:2/4;font-size:13px;color:var(--ink-2);margin-top:-2px}
+  .card .quick{display:flex;gap:2px}
+  .qbtn{width:38px;height:38px;border-radius:50%;border:0;background:transparent;display:grid;place-items:center;cursor:pointer;
+    font-size:17px;color:var(--muted);text-decoration:none}
+  .qbtn:hover{background:var(--wash)}
+  .qbtn.on-fav{color:var(--ink)}
+  .qbtn.on-visited{color:var(--done)}
+  .card.visited .cat{filter:grayscale(1);opacity:.45}
+  .card.visited .name{color:var(--muted);text-decoration:line-through;text-decoration-thickness:1px}
+  .card .star{color:var(--ink);margin-right:2px}
+  .empty{margin:12px 18px;padding:22px;border-radius:16px;background:var(--wash);text-align:center;color:var(--muted);font-size:15px}
+
+  /* ---- Pins ---- */
+  .pin{position:relative;width:32px;height:32px}
+  .pin .drop{position:absolute;inset:0;border-radius:50% 50% 50% 4px;transform:rotate(-45deg);background:var(--c);
+    border:2.5px solid #fff;box-shadow:0 3px 10px rgba(19,49,74,.35)}
+  .pin .em{position:absolute;inset:0;display:grid;place-items:center;font-size:15px;line-height:1}
+  .pin.visited .drop{filter:grayscale(1);opacity:.55}
+  .pin.visited .em{opacity:.6;filter:grayscale(1)}
+  .pin .b{position:absolute;right:-6px;top:-6px;width:18px;height:18px;border-radius:50%;border:2px solid #fff;font-size:10px;font-weight:800;
+    display:grid;place-items:center;color:#fff}
+  .pin .b.fav{background:var(--fav)}
+  .pin .b.done{background:var(--done);top:auto;bottom:4px;right:-8px}
+  .me-dot{width:18px;height:18px;border-radius:50%;background:#2F80ED;border:3px solid #fff;box-shadow:0 0 0 8px rgba(47,128,237,.18),0 2px 6px rgba(0,0,0,.3)}
+
+  .leaflet-popup-content-wrapper{border-radius:18px;box-shadow:var(--shadow);font-family:var(--font)}
+  .leaflet-popup-content{margin:14px 14px 10px;font-size:15px;line-height:1.4;color:var(--ink)}
+  .leaflet-popup-tip{box-shadow:none}
+  .leaflet-container a.leaflet-popup-close-button{top:6px;right:6px}
+  .pop-name{font-size:18px;font-weight:700;line-height:1.2;margin-right:16px}
+  .pop-sub{font-size:13px;color:var(--muted);margin-top:2px}
+  .pop-note{font-size:14px;margin-top:6px}
+  .pactions{display:flex;gap:6px;margin-top:12px}
+  .pactions .btn{flex:1;padding:8px 6px;white-space:nowrap}
+  .pactions.minor{margin-top:4px;justify-content:space-between}
+  .pactions.minor .btn{flex:none;padding:6px 8px;color:var(--muted);font-weight:500}
+  .leaflet-container a.btn{color:var(--ink)}
+  .leaflet-container a.btn.primary{color:#fff}
+  .leaflet-control-attribution{font-size:10px;background:rgba(255,255,255,.7)!important}
+  @media (max-width:899px){ .leaflet-bottom{bottom:172px} }
+
+  /* ---- Modale Fenster ---- */
+  .overlay{position:fixed;inset:0;background:rgba(19,49,74,.38);z-index:1000;display:none;align-items:flex-end;justify-content:center}
+  .overlay.open{display:flex}
+  .sheet{background:var(--surface);width:100%;max-width:520px;max-height:92vh;overflow-y:auto;border-radius:24px 24px 0 0;
+    padding:22px 20px calc(24px + var(--sab))}
+  @media (min-width:900px){ .overlay{align-items:center} .sheet{border-radius:24px} }
+  .sheet h2{margin:0 0 4px;font-size:24px;font-weight:800;letter-spacing:-.02em}
+  .sheet .close{float:right;margin:-6px -8px 0 0}
+  label.lbl{font-size:14px;font-weight:700;display:block;margin:14px 0 6px}
+  .hint{font-size:13px;color:var(--muted)}
+  input[type=text],input[type=url],input[type=search],textarea,select{width:100%;border:1.5px solid var(--line);
+    background:var(--surface);border-radius:12px;padding:10px 12px;outline:none;font-size:16px}
+  input:focus,textarea:focus,select:focus{border-color:var(--ink)}
   textarea{min-height:110px;resize:vertical}
   .row{display:flex;gap:8px;align-items:center}
   .row > input{flex:1}
-  .pills{display:flex;flex-wrap:wrap;gap:6px}
-  .pill{border:1px solid var(--border);background:var(--card);border-radius:999px;padding:5px 10px;font-size:13px;cursor:pointer;
-    display:inline-flex;gap:6px;align-items:center}
-  .pill .dot{width:9px;height:9px;border-radius:50%}
-  .pill.off{opacity:.45}
-  .pill .n{color:var(--muted);font-size:12px}
-  .grp-tools{display:flex;justify-content:flex-end;margin-bottom:-4px}
-  .grp-head{display:flex;align-items:center;gap:8px;width:100%;border:0;background:none;padding:10px 4px;margin:2px 0 4px;cursor:pointer;
-    font-size:13px;color:var(--fg);text-transform:uppercase;letter-spacing:.04em;font-weight:700;border-bottom:1px solid var(--border);text-align:left}
-  .grp-head .grp-name{flex:1}
-  .grp-head .grp-n{font-weight:500;color:var(--muted);background:var(--accent);border-radius:999px;padding:1px 8px;font-size:12px;letter-spacing:0}
-  .grp-head .chev{display:inline-block;transition:transform .15s;color:var(--muted)}
-  .group.closed .chev{transform:rotate(-90deg)}
-  .group h3{margin:8px 0 6px;font-size:13px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;font-weight:600}
-  .card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:12px;margin-bottom:8px;cursor:pointer}
-  .card.sel{border-color:var(--fg)}
-  .card.visited{opacity:.55}
-  .card.fav{border-color:#f2c94c;box-shadow:inset 3px 0 0 #f2c94c}
-  .card .done{font-size:11px;font-weight:500;color:#2b8a3e;background:#ebfbee;border-radius:999px;padding:1px 7px;margin-left:4px}
-  .card .flags{margin-left:auto;display:flex;gap:6px}
-  .iconbtn{min-width:36px;font-size:15px}
-  .on-fav{background:#fff7d6;border-color:#f2c94c;color:#b7791f}
-  .on-visited{background:#ebfbee;border-color:#8ce99a;color:#2b8a3e}
-  .pill-sep{flex-basis:100%;height:0}
-  .pill.flag.on{background:var(--fg);color:#fff;border-color:var(--fg)}
-  .pill.flag.on .n{color:#ddd}
-  .card .top{display:flex;justify-content:space-between;gap:8px;align-items:flex-start}
-  .card .name{font-weight:600}
-  .card .meta{font-size:12px;color:var(--muted);margin-top:2px}
-  .card .actions{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
-  .tag{font-size:11px;padding:2px 8px;border-radius:999px;color:#fff;white-space:nowrap}
-  .empty{border:1px dashed var(--border);border-radius:var(--radius);padding:20px;text-align:center;color:var(--muted);font-size:14px;background:var(--card)}
-  .foot{display:flex;flex-wrap:wrap;gap:6px;align-items:center;border-top:1px solid var(--border);padding-top:10px;margin-top:auto}
-  .foot .count{margin-left:auto;font-size:12px;color:var(--muted)}
-  .hint{font-size:12px;color:var(--muted)}
-  label.lbl{font-size:13px;font-weight:600;display:block;margin:10px 0 4px}
-  /* Sheet */
-  .overlay{position:fixed;inset:0;background:rgba(0,0,0,.35);z-index:1000;display:none;align-items:flex-end;justify-content:center}
-  .overlay.open{display:flex}
-  .sheet{background:var(--card);width:100%;max-width:520px;max-height:92vh;overflow-y:auto;border-radius:18px 18px 0 0;
-    padding:18px 18px calc(24px + env(safe-area-inset-bottom))}
-  @media (min-width:768px){ .overlay{align-items:center} .sheet{border-radius:18px} }
-  .sheet h2{margin:0 0 4px;font-size:18px}
-  .sheet .close{float:right}
-  .cand{display:flex;gap:10px;align-items:flex-start;border:1px solid var(--border);border-radius:12px;padding:10px;margin-bottom:8px}
-  .cand input[type=checkbox]{margin-top:4px;width:18px;height:18px}
+  .toggles{display:flex;gap:8px;margin:10px 0 2px}
+  .toggles label{display:flex;align-items:center;gap:8px;padding:8px 12px;border-radius:12px;background:var(--wash);cursor:pointer;font-size:15px;font-weight:500}
+  .cand{display:flex;gap:12px;align-items:flex-start;border:1.5px solid var(--line);border-radius:14px;padding:12px;margin-bottom:8px}
+  .cand input[type=checkbox]{margin-top:4px;width:20px;height:20px;accent-color:var(--ink)}
   .cand .body{flex:1;min-width:0}
-  .cand .addr{font-size:12px;color:var(--muted);overflow:hidden;text-overflow:ellipsis}
-  .cand select{margin-top:6px;padding:6px 8px;font-size:13px}
-  .approx{font-size:12px;color:#b7791f;background:#fff7d6;border-radius:8px;padding:4px 8px;margin-top:4px}
-  .cand .q{font-size:11px;color:var(--muted)}
-  .results button{display:block;width:100%;text-align:left;border:0;border-bottom:1px solid var(--border);background:none;padding:8px 4px;cursor:pointer}
-  .results button:hover{background:var(--accent)}
-  .toast{position:fixed;left:50%;bottom:calc(24px + env(safe-area-inset-bottom));transform:translateX(-50%);background:var(--fg);color:#fff;
-    padding:10px 16px;border-radius:12px;font-size:14px;z-index:2000;opacity:0;transition:opacity .2s;pointer-events:none;max-width:90vw}
-  .toast.show{opacity:1}
-  .pin-icon{position:relative;width:34px;height:34px;border-radius:50%;border:2px solid #fff;box-shadow:0 1px 6px rgba(0,0,0,.35);
-    display:flex;align-items:center;justify-content:center;font-size:17px;line-height:1}
-  .pin-icon.visited{filter:grayscale(1);opacity:.55}
-  .pin-icon.fav{border-color:#f2c94c;border-width:3px}
-  .badge-fav,.badge-done{position:absolute;top:-7px;right:-7px;width:17px;height:17px;border-radius:50%;font-size:11px;
-    display:flex;align-items:center;justify-content:center;border:1.5px solid #fff;font-weight:700}
-  .badge-fav{background:#f2c94c;color:#fff}
-  .badge-done{background:#2b8a3e;color:#fff;top:auto;bottom:-7px}
-  .me-dot{width:16px;height:16px;border-radius:50%;background:#1c7ed6;border:3px solid #fff;box-shadow:0 0 0 2px rgba(28,126,214,.35)}
-  .leaflet-popup-content{margin:10px 12px;font-size:14px}
-  .leaflet-popup-content .pactions{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
-  .leaflet-popup-content a.btn{color:var(--fg)}
+  .cand .addr{font-size:13px;color:var(--muted)}
+  .cand select{margin-top:8px;padding:7px 10px;font-size:14px}
+  .cand .q{font-size:12px;color:var(--muted)}
+  .approx{font-size:13px;color:#8A5A00;background:#FFF3CC;border-radius:8px;padding:5px 9px;margin-top:6px}
+  .results button{display:block;width:100%;text-align:left;border:0;border-bottom:1px solid var(--line);background:none;padding:10px 4px;cursor:pointer}
+  .results button:hover{background:var(--wash)}
+  .toast{position:fixed;left:50%;top:calc(120px + var(--sat));transform:translate(-50%,-8px);background:var(--ink);color:#fff;
+    padding:11px 18px;border-radius:14px;font-size:15px;z-index:2000;opacity:0;transition:opacity .2s,transform .2s;pointer-events:none;max-width:90vw;box-shadow:var(--shadow)}
+  .toast.show{opacity:1;transform:translate(-50%,0)}
   .spinner{display:inline-block;width:14px;height:14px;border:2px solid currentColor;border-right-color:transparent;border-radius:50%;animation:spin .7s linear infinite}
   @keyframes spin{to{transform:rotate(360deg)}}
+  @media (prefers-reduced-motion:reduce){ *{transition:none!important;animation:none!important} }
 </style>
 </head>
 <body>
-<div class="app">
-  <header>
-    <div>
-      <h1>Reel-Karte</h1>
-      <p>Deine gespeicherten Reels, endlich mit Adresse.</p>
-    </div>
-    <div class="toggle" id="viewToggle">
-      <button data-v="map" class="on">Karte</button>
-      <button data-v="list">Liste</button>
-    </div>
-  </header>
+<div id="map" aria-label="Karte"></div>
 
-  <main id="main" class="show-map">
-    <aside>
-      <div class="row">
-        <input type="url" id="quickUrl" inputmode="url" placeholder="Reel-Link einfügen …">
-        <button class="btn primary" id="addBtn">+ Reel</button>
-      </div>
-      <input type="search" id="search" placeholder="Suche nach Name, Ort, Notiz">
-      <div class="pills" id="pills"></div>
-      <button class="btn" id="nearBtnList">📍 In meiner Nähe</button>
-      <div id="list"></div>
-      <div class="foot">
-        <button class="btn sm ghost" id="exportBtn">⬇︎ Backup</button>
-        <button class="btn sm ghost" id="importBtn">⬆︎ Backup laden</button>
-        <input type="file" id="importFile" accept=".json,application/json" hidden>
-        <button class="btn sm ghost" id="syncBtn">☁︎ Sync</button>
-        <span class="count" id="count"></span>
-      </div>
-    </aside>
-    <div class="mapwrap">
-      <div id="map"></div>
-      <div class="fab">
-        <button class="btn" id="nearBtnMap" title="In meiner Nähe">📍</button>
-        <button class="btn primary" id="addBtnMap" title="Reel hinzufügen">＋</button>
-      </div>
-    </div>
-  </main>
+<div class="topbar">
+  <div class="searchrow">
+    <label class="search">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+      <input type="search" id="search" placeholder="Orte durchsuchen" aria-label="Orte durchsuchen">
+    </label>
+    <button class="roundbtn" id="nearBtn" title="In meiner Nähe" aria-label="In meiner Nähe">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M21 3 3 10.5l7.2 2.3L12.5 20z"/></svg>
+    </button>
+  </div>
+  <div class="chips" id="pills"></div>
 </div>
+
+<section class="drawer" id="drawer" aria-label="Deine Orte">
+  <div class="drawer-head" id="drawerHead">
+    <div class="handle"></div>
+    <div class="drawer-title"><h1>Reel-Karte</h1><span class="sub" id="countTop"></span></div>
+    <div class="addrow">
+      <input type="url" id="quickUrl" inputmode="url" placeholder="Reel-Link einfügen" aria-label="Reel-Link einfügen">
+      <button class="btn primary" id="addBtn">Hinzufügen</button>
+    </div>
+  </div>
+  <div class="drawer-body">
+    <div id="list"></div>
+    <div class="drawer-foot">
+      <button class="btn sm ghost" id="syncBtn">☁︎ Sync</button>
+      <button class="btn sm ghost" id="exportBtn">Backup</button>
+      <button class="btn sm ghost" id="importBtn">Backup laden</button>
+      <input type="file" id="importFile" accept=".json,application/json" hidden>
+      <span class="count" id="count"></span>
+    </div>
+  </div>
+</section>
 
 <!-- Hinzufügen -->
 <div class="overlay" id="addOverlay">
@@ -557,22 +616,28 @@ function extractQueries(text) {
 let map, markerLayer, meMarker, myPos = null;
 const markers = new Map();
 function initMap() {
-  map = L.map("map", { zoomControl: true }).setView([-25, 134], 4);
-  L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-    maxZoom: 19, attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+  map = L.map("map", { zoomControl: false, attributionControl: true }).setView([-25, 134], 4);
+  L.tileLayer("https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png", {
+    maxZoom: 20, subdomains: "abcd",
+    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>',
   }).addTo(map);
+  if (matchMedia("(min-width:900px)").matches) L.control.zoom({ position: "bottomright" }).addTo(map);
+  map.on("click", () => Drawer.set("peek"));
   markerLayer = L.layerGroup().addTo(map);
 }
 function popupHtml(p) {
-  return `<strong>${p.fav ? "⭐ " : ""}${esc(p.name)}</strong><br><span style="color:#74706a;font-size:12px">${esc(catLabel(p.category))}${p.city ? " · " + esc(p.city) : ""}</span>
-    ${p.note ? `<div style="margin-top:4px;font-size:13px">${esc(p.note)}</div>` : ""}
+  return `<div class="pop-name">${esc(p.name)}</div>
+    <div class="pop-sub">${catIcon(p.category)} ${esc(catLabel(p.category))}${p.city ? ", " + esc(p.city) : ""}${p.visited ? " – besucht" : ""}</div>
+    ${p.note ? `<div class="pop-note">${esc(p.note)}</div>` : ""}
     <div class="pactions">
-      ${p.url ? `<a class="btn sm" href="${esc(p.url)}" target="_blank" rel="noopener">▶︎ Reel</a>` : ""}
-      <a class="btn sm" href="${esc(p.website || googleSearch(p))}" target="_blank" rel="noopener">${p.website ? "🌐 Webseite" : "🔎 Google"}</a>
-      <a class="btn sm" href="${esc(routeUrl(p))}" target="_blank" rel="noopener">🧭 Route</a>
-      <button class="btn sm ${p.fav ? "on-fav" : ""}" onclick="toggleFlag('${esc(p.id)}','fav')">${p.fav ? "★" : "☆"}</button>
-      <button class="btn sm ${p.visited ? "on-visited" : ""}" onclick="toggleFlag('${esc(p.id)}','visited')">✓${p.visited ? " besucht" : ""}</button>
-      <button class="btn sm" onclick="openDetail('${esc(p.id)}')">✎</button>
+      ${p.url ? `<a class="btn sm primary" href="${esc(p.url)}" target="_blank" rel="noopener">▶ Reel ansehen</a>` : ""}
+      <a class="btn sm" href="${esc(routeUrl(p))}" target="_blank" rel="noopener">Route</a>
+      <a class="btn sm" href="${esc(p.website || googleSearch(p))}" target="_blank" rel="noopener">${p.website ? "Webseite" : "Google"}</a>
+    </div>
+    <div class="pactions minor">
+      <button class="btn sm ghost" onclick="toggleFlag('${esc(p.id)}','fav')">${p.fav ? "★ Favorit" : "☆ Favorit"}</button>
+      <button class="btn sm ghost" onclick="toggleFlag('${esc(p.id)}','visited')">${p.visited ? "✓ Besucht" : "○ Besucht"}</button>
+      <button class="btn sm ghost" onclick="openDetail('${esc(p.id)}')">Bearbeiten</button>
     </div>`;
 }
 function renderMarkers(list) {
@@ -580,10 +645,12 @@ function renderMarkers(list) {
   for (const p of list) {
     if (p.lat == null) continue;
     const icon = L.divIcon({
-      className: "", iconSize: [34, 34], iconAnchor: [17, 17], popupAnchor: [0, -16],
-      html: `<div class="pin-icon ${p.visited ? "visited" : ""} ${p.fav ? "fav" : ""}" style="background:${catColor(p.category)}">${catIcon(p.category)}${p.fav ? '<span class="badge-fav">★</span>' : ""}${p.visited ? '<span class="badge-done">✓</span>' : ""}</div>`,
+      className: "", iconSize: [32, 32], iconAnchor: [16, 37], popupAnchor: [0, -34],
+      html: `<div class="pin ${p.visited ? "visited" : ""}" style="--c:${catColor(p.category)}"><span class="drop"></span><span class="em">${catIcon(p.category)}</span>${p.fav ? '<span class="b fav">★</span>' : ""}${p.visited ? '<span class="b done">✓</span>' : ""}</div>`,
     });
-    const m = L.marker([p.lat, p.lng], { icon, title: p.name, zIndexOffset: p.fav ? 500 : p.visited ? -500 : 0 }).bindPopup(() => popupHtml(p));
+    const m = L.marker([p.lat, p.lng], { icon, title: p.name, zIndexOffset: p.fav ? 500 : p.visited ? -500 : 0 }).bindPopup(() => popupHtml(p), {
+      maxWidth: 300, minWidth: 250, autoPanPaddingTopLeft: L.point(16, 150),
+      autoPanPaddingBottomRight: L.point(16, matchMedia("(min-width:900px)").matches ? 20 : 190) });
     m.addTo(markerLayer); markers.set(p.id, m);
   }
 }
@@ -596,10 +663,10 @@ function locate() {
   toast("Standort wird gesucht …");
   navigator.geolocation.getCurrentPosition(pos => {
     myPos = { lat: pos.coords.latitude, lng: pos.coords.longitude };
-    const icon = L.divIcon({ className: "", html: '<div class="me-dot"></div>', iconSize: [16, 16], iconAnchor: [8, 8] });
+    const icon = L.divIcon({ className: "", html: '<div class="me-dot"></div>', iconSize: [18, 18], iconAnchor: [9, 9] });
     if (meMarker) meMarker.setLatLng([myPos.lat, myPos.lng]); else meMarker = L.marker([myPos.lat, myPos.lng], { icon, zIndexOffset: 1000 }).addTo(map);
     map.setView([myPos.lat, myPos.lng], 15);
-    sortByDistance = true; render();
+    sortByDistance = true; render(); Drawer.set("half");
     const near = pins.filter(p => p.lat != null && distKm(myPos, p) <= 2).length;
     toast(near ? `${near} Pin${near === 1 ? "" : "s"} im Umkreis von 2 km` : "Hier in der Nähe ist noch nichts gespeichert.");
   }, err => {
@@ -626,40 +693,40 @@ function renderPills() {
   const counts = Object.fromEntries(CAT_KEYS.map(k => [k, 0]));
   pins.forEach(p => counts[p.category]++);
   $("#pills").innerHTML = CATEGORIES.map(c =>
-    `<button class="pill ${activeCats.has(c.key) ? "" : "off"}" data-cat="${c.key}"><span>${c.icon}</span>${c.label}<span class="n">${counts[c.key]}</span></button>`).join("")
+    `<button class="pill ${activeCats.has(c.key) ? "" : "off"}" data-cat="${c.key}" aria-pressed="${activeCats.has(c.key)}"><span class="ico" style="--c:${catColor(c.key)}">${c.icon}</span>${c.label}<span class="n">${counts[c.key]}</span></button>`).join("")
     + `<span class="pill-sep"></span>
-    <button class="pill flag ${onlyFav ? "on" : ""}" data-flag="fav">⭐ Nur Favoriten<span class="n">${pins.filter(p => p.fav).length}</span></button>
-    <button class="pill flag ${hideVisited ? "on" : ""}" data-flag="visited">✓ Besuchte ausblenden<span class="n">${pins.filter(p => p.visited).length}</span></button>`;
+    <button class="pill flag ${onlyFav ? "on" : ""}" data-flag="fav" aria-pressed="${onlyFav}">★ Favoriten<span class="n">${pins.filter(p => p.fav).length}</span></button>
+    <button class="pill flag ${hideVisited ? "on" : ""}" data-flag="visited" aria-pressed="${hideVisited}">Besuchte ausblenden<span class="n">${pins.filter(p => p.visited).length}</span></button>`;
 }
 function cardHtml(p) {
   const d = myPos && p.lat != null ? fmtKm(distKm(myPos, p)) : "";
-  return `<div class="card ${p.id === selectedId ? "sel" : ""} ${p.visited ? "visited" : ""} ${p.fav ? "fav" : ""}" data-id="${esc(p.id)}">
-    <div class="top"><div><div class="name">${p.fav ? "⭐ " : ""}${esc(p.name)}${p.visited ? ' <span class="done">✓ besucht</span>' : ""}</div>
-      <div class="meta">${[d, p.address || p.city, p.lat == null ? "⚠︎ ohne Koordinaten" : ""].filter(Boolean).map(esc).join(" · ")}</div></div>
-      <span class="tag" style="background:${catColor(p.category)}">${catIcon(p.category)} ${esc(catLabel(p.category))}</span></div>
-    ${p.note ? `<div class="meta" style="color:var(--fg)">${esc(p.note)}</div>` : ""}
-    <div class="actions">
-      ${p.url ? `<a class="btn sm" href="${esc(p.url)}" target="_blank" rel="noopener">▶︎ Reel</a>` : ""}
-      <a class="btn sm" href="${esc(p.website || googleSearch(p))}" target="_blank" rel="noopener">${p.website ? "🌐 Webseite" : "🔎 Google"}</a>
-      <a class="btn sm" href="${esc(routeUrl(p))}" target="_blank" rel="noopener">🧭 Route</a>
-      <span class="flags">
-        <button class="btn sm iconbtn ${p.fav ? "on-fav" : ""}" data-act="fav" title="Favorit" aria-pressed="${p.fav}">${p.fav ? "★" : "☆"}</button>
-        <button class="btn sm iconbtn ${p.visited ? "on-visited" : ""}" data-act="visited" title="Besucht" aria-pressed="${p.visited}">✓</button>
-      </span>
-    </div></div>`;
+  return `<div class="card ${p.id === selectedId ? "sel" : ""} ${p.visited ? "visited" : ""}" data-id="${esc(p.id)}">
+    <span class="cat" style="--c:${catColor(p.category)}" title="${esc(catLabel(p.category))}">${catIcon(p.category)}</span>
+    <div class="txt">
+      <div class="name">${p.fav ? '<span class="star">★</span>' : ""}${esc(p.name)}</div>
+      <div class="meta">${d ? `<span class="km">${esc(d)}</span>` : ""}${p.lat == null ? '<span class="warn">Ohne Position</span>' : `<span>${esc(p.address || p.city || catLabel(p.category))}</span>`}</div>
+    </div>
+    <div class="quick">
+      ${p.url ? `<a class="qbtn" href="${esc(p.url)}" target="_blank" rel="noopener" title="Reel ansehen" aria-label="Reel ansehen">▶</a>` : ""}
+      <button class="qbtn ${p.fav ? "on-fav" : ""}" data-act="fav" title="Favorit" aria-label="Favorit" aria-pressed="${p.fav}">${p.fav ? "★" : "☆"}</button>
+      <button class="qbtn ${p.visited ? "on-visited" : ""}" data-act="visited" title="Besucht" aria-label="Besucht" aria-pressed="${p.visited}">${p.visited ? "✓" : "○"}</button>
+    </div>
+    ${p.note ? `<div class="note">${esc(p.note)}</div>` : ""}
+  </div>`;
 }
 function render() {
   renderPills();
   const vis = visiblePins();
   renderMarkers(vis);
-  $("#count").textContent = `${pins.length} ${pins.length === 1 ? "Pin" : "Pins"} · ${Sync.statusText()}`;
+  $("#count").textContent = Sync.statusText();
+  $("#countTop").textContent = `${pins.length} ${pins.length === 1 ? "Ort" : "Orte"}`;
   if (!vis.length) {
-    $("#list").innerHTML = `<div class="empty">${pins.length ? "Nichts gefunden – passe Suche oder Filter an." : "Noch keine Pins. Füge oben einen Reel-Link ein."}</div>`;
+    $("#list").innerHTML = `<div class="empty">${pins.length ? "Nichts gefunden – passe Suche oder Filter an." : "Noch keine Orte. Füge oben einen Reel-Link ein."}</div>`;
     return;
   }
   if (sortByDistance && myPos) {
     const sorted = [...vis].sort((a, b) => (a.lat == null) - (b.lat == null) || (a.lat == null ? 0 : distKm(myPos, a) - distKm(myPos, b)));
-    $("#list").innerHTML = `<div class="group"><h3>Nach Distanz <button class="btn sm ghost" id="unsort">Nach Stadt</button></h3>${sorted.map(cardHtml).join("")}</div>`;
+    $("#list").innerHTML = `<div class="dist-head"><strong>In deiner Nähe</strong><button class="btn sm ghost" id="unsort">Nach Stadt sortieren</button></div>${sorted.map(cardHtml).join("")}`;
     return;
   }
   const groups = {};
@@ -760,7 +827,7 @@ function saveCandidates() {
     pins.push(pin); fresh.push(pin); added++;
   }
   save(); closeOverlays(); render();
-  if (fresh.length) map.setView([fresh[0].lat, fresh[0].lng], Math.max(map.getZoom(), 14));
+  if (fresh.length) { Drawer.set("peek"); map.setView([fresh[0].lat, fresh[0].lng], Math.max(map.getZoom(), 14)); }
   toast(added ? `${added} Pin${added === 1 ? "" : "s"} gesetzt.` : "Diese Orte waren schon auf der Karte.");
   (async () => { for (const p of fresh) { await enrich(p); await sleep(400); } })();
 }
@@ -779,9 +846,9 @@ function openDetail(id) {
       <a class="btn sm" href="${esc(routeUrl(p))}" target="_blank" rel="noopener">🧭 Route</a>
       ${p.lat != null ? `<button class="btn sm" id="dShow">Auf Karte</button>` : ""}
     </div>
-    <div class="row" style="margin-bottom:4px">
-      <label class="pill" style="cursor:pointer"><input type="checkbox" id="dFav" ${p.fav ? "checked" : ""}> ⭐ Favorit</label>
-      <label class="pill" style="cursor:pointer"><input type="checkbox" id="dVisited" ${p.visited ? "checked" : ""}> ✓ Besucht</label>
+    <div class="toggles">
+      <label><input type="checkbox" id="dFav" ${p.fav ? "checked" : ""}> ★ Favorit</label>
+      <label><input type="checkbox" id="dVisited" ${p.visited ? "checked" : ""}> ✓ Besucht</label>
     </div>
     <label class="lbl">Name</label><input type="text" id="dName" value="${esc(p.name)}">
     <label class="lbl">Adresse</label>
@@ -868,17 +935,52 @@ async function importBackup(file) {
 }
 
 /* ---------- Ansicht ---------- */
-function setView(v) {
-  $("#main").className = v === "list" ? "show-list" : "show-map";
-  document.querySelectorAll("#viewToggle button").forEach(b => b.classList.toggle("on", b.dataset.v === v));
-  if (v === "map") setTimeout(() => map.invalidateSize(), 50);
-}
+function setView(v) { Drawer.set(v === "list" ? "half" : "peek"); }
+const Drawer = (() => {
+  const el = () => $("#drawer");
+  let state = "peek";
+  const desktop = () => matchMedia("(min-width:900px)").matches;
+  const H = () => ({ peek: 172, half: Math.round(innerHeight * 0.55), full: innerHeight - 70 });
+  function set(s) {
+    state = s; const d = el(); if (!d) return;
+    d.dataset.state = s;
+    if (desktop()) { d.style.height = ""; return; }
+    d.style.height = H()[s] + "px";
+    if (map) setTimeout(() => map.invalidateSize(), 300);
+  }
+  function init() {
+    const head = $("#drawerHead"), d = el();
+    let y0 = 0, h0 = 0, moved = 0, active = false;
+    head.addEventListener("pointerdown", e => {
+      if (desktop() || e.target.closest("input,button,a")) return;
+      active = true; moved = 0; y0 = e.clientY; h0 = d.getBoundingClientRect().height;
+      d.classList.add("dragging"); head.setPointerCapture(e.pointerId);
+    });
+    head.addEventListener("pointermove", e => {
+      if (!active) return;
+      const dy = y0 - e.clientY; moved = Math.max(moved, Math.abs(dy));
+      d.style.height = Math.min(innerHeight - 50, Math.max(110, h0 + dy)) + "px";
+    });
+    const end = () => {
+      if (!active) return; active = false; d.classList.remove("dragging");
+      if (moved < 6) { set(state === "peek" ? "half" : state === "half" ? "full" : "peek"); return; }
+      const h = d.getBoundingClientRect().height, hs = H();
+      const best = Object.keys(hs).reduce((a, b) => Math.abs(hs[a] - h) < Math.abs(hs[b] - h) ? a : b);
+      set(best);
+    };
+    head.addEventListener("pointerup", end); head.addEventListener("pointercancel", end);
+    $("#quickUrl").addEventListener("focus", () => { if (state === "peek") set("half"); });
+    $("#search").addEventListener("focus", () => { if (state === "peek") set("half"); });
+    addEventListener("resize", () => set(state));
+    set("peek");
+  }
+  return { set, init, get state() { return state; } };
+})();
 
 /* ---------- Events ---------- */
 function bind() {
-  document.querySelectorAll("#viewToggle button").forEach(b => b.onclick = () => setView(b.dataset.v));
+  Drawer.init();
   $("#addBtn").onclick = () => { const v = $("#quickUrl").value.trim(); $("#quickUrl").value = ""; openAdd({ url: sanitiseReelUrl(v) || v }); };
-  $("#addBtnMap").onclick = () => openAdd();
   $("#quickUrl").addEventListener("input", e => {
     const u = sanitiseReelUrl(e.target.value); if (u) { e.target.value = ""; openAdd({ url: u }); }
   });
@@ -893,6 +995,7 @@ function bind() {
   $("#list").addEventListener("click", e => {
     if (e.target.closest("a")) return;
     const act = e.target.closest("[data-act]");
+    if (act) e.stopPropagation();
     if (act) { toggleFlag(act.closest(".card").dataset.id, act.dataset.act); return; }
     if (e.target.id === "unsort") { sortByDistance = false; render(); return; }
     if (e.target.id === "toggleAllCities") {
@@ -903,10 +1006,15 @@ function bind() {
     }
     const gh = e.target.closest(".grp-head");
     if (gh) { const g = gh.dataset.city; collapsedCities.has(g) ? collapsedCities.delete(g) : collapsedCities.add(g); saveCollapsed(); render(); return; }
-    const c = e.target.closest(".card"); if (c) openDetail(c.dataset.id);
+    const c = e.target.closest(".card"); if (!c) return;
+    const p = pins.find(x => x.id === c.dataset.id);
+    if (p && p.lat != null && markers.get(p.id)) {
+      selectedId = p.id; Drawer.set("peek");
+      map.setView([p.lat, p.lng], Math.max(map.getZoom(), 16));
+      setTimeout(() => markers.get(p.id)?.openPopup(), 320);
+    } else openDetail(c.dataset.id);
   });
-  $("#nearBtnList").onclick = () => { locate(); };
-  $("#nearBtnMap").onclick = () => { locate(); };
+  $("#nearBtn").onclick = () => { locate(); };
   $("#exportBtn").onclick = exportBackup;
   $("#syncBtn").onclick = () => Sync.openSettings();
   $("#importBtn").onclick = () => $("#importFile").click();
@@ -1004,7 +1112,7 @@ const Sync = (() => {
     if (state === "läuft") return "synchronisiere …";
     return lastAt ? "☁︎ synchron " + new Date(lastAt).toLocaleTimeString("de-CH", { hour: "2-digit", minute: "2-digit" }) : "☁︎ Sync aktiv";
   }
-  function updateBadge() { const c = $("#count"); if (c) c.textContent = `${pins.length} ${pins.length === 1 ? "Pin" : "Pins"} · ${statusText()}`; }
+  function updateBadge() { const c = $("#count"); if (c) c.textContent = statusText(); }
   async function connect(token) {
     cfg = { token: token.trim() };
     // vorhandenen Gist suchen (zweites Gerät), sonst neu anlegen
