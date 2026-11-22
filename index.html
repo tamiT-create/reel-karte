@@ -1265,16 +1265,37 @@ bind();
 render();
 fitAll();
 if (Sync.enabled()) Sync.run();
-// Teilen per Link: ?add=<reel-link>&text=<caption>
-(() => {
-  const sp = new URLSearchParams(location.search);
+// Teilen per Link: ?add=<reel-link>&text=<caption>  (+ optional fertig vorbereiteter Ort)
+function applyPrefill(sp) {
   const raw = sp.get("add") || sp.get("url") || sp.get("text") || "";
-  if (!raw) return;
+  if (!raw) return false;
   const url = sanitiseReelUrl(raw) || findUrlInText(raw) || "";
   const caption = sp.get("caption") || (sp.get("text") && !sanitiseReelUrl(sp.get("text")) ? sp.get("text") : "");
-  history.replaceState(null, "", location.pathname);
   openAdd({ url, caption });
+  const lat = parseFloat(sp.get("lat")), lng = parseFloat(sp.get("lng"));
+  if (Number.isFinite(lat) && Number.isFinite(lng)) {
+    const cat = sp.get("cat");
+    candidates = [{
+      name: sp.get("name") || "Neuer Ort", address: sp.get("addr") || "", city: sp.get("city") || "", country: sp.get("country") || "",
+      lat, lng, website: sp.get("web") || "", note: sp.get("note") || "",
+      category: CAT_KEYS.includes(cat) ? cat : pickCategory({ name: sp.get("name") || "" }, "", caption),
+      checked: true, query: "",
+    }];
+    renderCandidates();
+  }
+  return true;
+}
+(() => {
+  const sp = new URLSearchParams(location.search);
+  if (applyPrefill(sp)) history.replaceState(null, "", location.pathname);
 })();
+// Vorbereiteten Reel-Karte-Link ins Feld «Reel-Link einfügen» kopieren → wird übernommen
+$("#quickUrl").addEventListener("input", e => {
+  try {
+    const u = new URL(e.target.value.trim());
+    if (/reel-karte/.test(u.pathname) && u.searchParams.get("add")) { e.target.value = ""; applyPrefill(u.searchParams); }
+  } catch { }
+}, true);
 </script>
 </body>
 </html>
