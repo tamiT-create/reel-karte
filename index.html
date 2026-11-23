@@ -153,6 +153,9 @@
   .pop-name{font-size:18px;font-weight:700;line-height:1.2;margin-right:16px}
   .pop-sub{font-size:13px;color:var(--muted);margin-top:2px}
   .pop-note{font-size:14px;margin-top:6px}
+  .pop-near{margin-top:10px;padding-top:8px;border-top:1px solid rgba(19,49,74,.12)}
+  .pop-near-t{font-size:12px;font-weight:600;opacity:.65;margin-bottom:4px}
+  .pop-near .btn{display:flex;width:100%;justify-content:flex-start;text-align:left;margin-top:4px}
   .pactions{display:flex;gap:6px;margin-top:12px}
   .pactions .btn{flex:1;padding:8px 6px;white-space:nowrap}
   .pactions.minor{margin-top:4px;justify-content:space-between}
@@ -706,6 +709,25 @@ function popupHtml(p) {
       <button class="btn sm ghost" onclick="openDetail('${esc(p.id)}')">Bearbeiten</button>
     </div>`;
 }
+// Pins, die auf dem Bildschirm (fast) übereinander liegen → im Popup zur Auswahl anbieten
+function nearbyHtml(p) {
+  if (!map) return "";
+  const pt = map.latLngToContainerPoint([p.lat, p.lng]);
+  const near = [];
+  for (const [id, m] of markers) {
+    if (id === p.id) continue;
+    if (pt.distanceTo(map.latLngToContainerPoint(m.getLatLng())) < 34) {
+      const q = pins.find(x => x.id === id); if (q) near.push(q);
+    }
+  }
+  if (!near.length) return "";
+  return `<div class="pop-near"><div class="pop-near-t">Hier auch:</div>${near.map(n =>
+    `<button class="btn sm ghost" onclick="openPinPopup('${esc(n.id)}')">${catIcon(n.category)} ${esc(n.name)}</button>`).join("")}</div>`;
+}
+function openPinPopup(id) {
+  const m = markers.get(id); if (!m) return;
+  map.closePopup(); selectedId = id; setTimeout(() => m.openPopup(), 60);
+}
 function renderMarkers(list) {
   markerLayer.clearLayers(); markers.clear();
   for (const p of list) {
@@ -714,7 +736,7 @@ function renderMarkers(list) {
       className: "", iconSize: [32, 32], iconAnchor: [16, 37], popupAnchor: [0, -34],
       html: `<div class="pin ${p.visited ? "visited" : ""}" style="--c:${catColor(p.category)}"><span class="drop"></span><span class="em">${catIcon(p.category)}</span>${p.fav ? '<span class="b fav">★</span>' : ""}${p.visited ? '<span class="b done">✓</span>' : ""}</div>`,
     });
-    const m = L.marker([p.lat, p.lng], { icon, title: p.name, zIndexOffset: p.fav ? 500 : p.visited ? -500 : 0 }).bindPopup(() => popupHtml(p), {
+    const m = L.marker([p.lat, p.lng], { icon, title: p.name, zIndexOffset: p.fav ? 500 : p.visited ? -500 : 0 }).bindPopup(() => popupHtml(p) + nearbyHtml(p), {
       maxWidth: 300, minWidth: 250, autoPanPaddingTopLeft: L.point(16, 150),
       autoPanPaddingBottomRight: L.point(16, matchMedia("(min-width:900px)").matches ? 20 : 190) });
     m.addTo(markerLayer); markers.set(p.id, m);
